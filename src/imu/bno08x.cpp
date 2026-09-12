@@ -7,8 +7,11 @@
 
 namespace {
 
-// BNO08x default I2C address is 0x4A (0x4B if the board's ADR pin is
-// strapped high) - Adafruit_BNO08x::begin_I2C() defaults to 0x4A.
+// BNO08x default I2C address is 0x4A, 0x4B if the board's ADR/PS0 pin is
+// strapped high - confirmed on this hardware via the I2C scan below, which
+// found the sensor answering only at 0x4B, not the 0x4A
+// Adafruit_BNO08x::begin_I2C() tries by default.
+constexpr uint8_t BNO08X_I2C_ADDR = 0x4B;
 constexpr uint32_t ROTATION_VECTOR_INTERVAL_US = 50000; // 50ms -> 20Hz
 
 Adafruit_BNO08x bno08x(IMU_RST_PIN);
@@ -57,8 +60,7 @@ bool imuInit() {
   // itself use the INT pin (only the reset pin, via the constructor above) -
   // this is a placeholder until/unless interrupt-driven reads are added.
   pinMode(IMU_INT_PIN, INPUT_PULLUP);
-
-  if (!bno08x.begin_I2C()) {
+  if (!bno08x.begin_I2C(BNO08X_I2C_ADDR)) {
     scanI2CBus();
     return false;
   }

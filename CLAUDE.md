@@ -38,7 +38,7 @@ web UI will expose. SPI wasn't necessary — I2C bandwidth is plenty for a
 single sensor at heading-appropriate update rates (10–20 Hz).
 
 ## Git Workflow
-- Commit and push directly to `main`. Do not create feature branches for
+- Don't commit and push. Do not create feature branches for
   individual features/changes — this is a solo project, no PR workflow
   needed right now.
 - Still use clear, atomic commits (one logical change per commit) even
