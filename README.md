@@ -8,13 +8,13 @@ the ESP32 itself will expose IMU calibration status and let the mounting
 offset be trimmed at runtime — see `CLAUDE.md` for the full design rationale
 and constraints.
 
-## Status: scaffolding only
-
-This is a fresh PlatformIO project. Nothing functional has been written yet:
+## Status: BNO08x reading to console
 
 - [x] PlatformIO project created, board config corrected for the actual
       N16R8 hardware (16MB flash, 8MB octal PSRAM, LittleFS filesystem)
-- [ ] BNO08x driver integration (I2C, SH-2 rotation vector reads)
+- [x] BNO08x driver integration (I2C, SH-2 rotation vector reads) - prints
+      heading + fused-orientation calibration accuracy to the serial console
+      only; no NMEA2000/CAN, NVS, or web UI yet
 - [ ] TWAI/CAN transceiver wiring and NMEA2000 stack integration
 - [ ] PGN 127250 (Vessel Heading) encode + transmit
 - [ ] PGN 127257 (Attitude) encode + transmit (optional)
@@ -23,9 +23,11 @@ This is a fresh PlatformIO project. Nothing functional has been written yet:
 - [ ] Web UI (ESPAsyncWebServer, assets on LittleFS)
 - [ ] Feature-flag config layer (`src/config.h/.cpp`, backed by NVS)
 
-`src/main.cpp` is still the unmodified PlatformIO template stub — no
-project-specific logic exists yet. The `src/n2k/`, `src/imu/`, `src/web/`
-layout described in `CLAUDE.md` has not been created.
+`src/main.cpp` now just wires up `src/imu/` and prints heading/calibration
+to the serial console. The `src/n2k/` and `src/web/` layout described in
+`CLAUDE.md` has not been created yet, and this hasn't been verified on real
+hardware (no bench access) — flash and check via `pio device monitor`
+before trusting the output.
 
 ## Hardware
 

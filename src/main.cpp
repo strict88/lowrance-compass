@@ -1,18 +1,23 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+#include "imu/bno08x.h"
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  Serial.begin(115200);
+  while (!Serial) {
+    delay(10);
+  }
+
+  if (!imuInit()) {
+    Serial.println("BNO08x init failed - check wiring/I2C address");
+  }
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+  float headingDeg;
+  uint8_t calAccuracy;
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  if (imuPoll(headingDeg, calAccuracy)) {
+    Serial.printf("heading=%.1f  cal=%u\n", headingDeg, calAccuracy);
+  }
 }
