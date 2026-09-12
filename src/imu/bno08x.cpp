@@ -28,6 +28,26 @@ float quaternionToYawRad(float qr, float qi, float qj, float qk) {
   return atan2f(2.0f * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
 }
 
+// Diagnostic only: lists every address that ACKs on the I2C bus. Useful
+// while the BNO08x isn't being found at its expected 0x4A/0x4B, to tell a
+// dead bus (nothing found - power/wiring) apart from a live device at an
+// unexpected address (found, but not 0x4A/0x4B - e.g. PS0/PS1 protocol-select
+// pins not strapped for I2C mode on a bare module).
+void scanI2CBus() {
+  Serial.println("I2C scan:");
+  int found = 0;
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("  device found at 0x%02X\n", addr);
+      found++;
+    }
+  }
+  if (found == 0) {
+    Serial.println("  no devices found");
+  }
+}
+
 } // namespace
 
 bool imuInit() {
@@ -39,6 +59,7 @@ bool imuInit() {
   pinMode(IMU_INT_PIN, INPUT_PULLUP);
 
   if (!bno08x.begin_I2C()) {
+    scanI2CBus();
     return false;
   }
 
