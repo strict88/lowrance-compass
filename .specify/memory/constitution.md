@@ -1,50 +1,177 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+Version change: [none, unfilled scaffold] → 1.0.0
+Rationale: Initial ratification. The prior file contained only unfilled template
+placeholders, so this is treated as the first adopted version, not an amendment.
+Modified principles: n/a (initial adoption)
+Added sections:
+  - Core Principles: I. Navigation Data Integrity, II. NMEA 2000 Compliance,
+    III. Real-Time Isolation, IV. Hardware-in-the-Loop Verification,
+    V. Hardware Abstraction and Configuration, VI. Web UI: Simple, Local, Robust,
+    VII. Reliability and Field Safety
+  - Technical Constraints
+  - Development Workflow
+  - Governance
+Removed sections: none
+Deferred / TODO placeholders: none — all template placeholders resolved.
+Templates requiring follow-up: none checked automatically by this command; dependent
+templates/commands read this constitution at runtime and are not modified here.
+This report is scratch material for human review; remove it once the amendment is
+reviewed and before relying on the file as the durable governance record.
+-->
+
+# Lowrance Compass Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Navigation Data Integrity (NON-NEGOTIABLE)
+The device MUST never send stale, frozen, or invalid heading data. If the sensor fails,
+stops reporting, or reports unusable accuracy, the device MUST stop sending heading PGNs
+or MUST send the NMEA 2000 "data not available" values. It MUST NOT repeat the last known
+value. Every value placed on the bus MUST use correct NMEA 2000 units (radians, rad/s),
+correct ranges (heading normalized to [0, 2π)), and the correct reference (magnetic vs.
+true). The heading pipeline (sensor quaternion → Euler → mounting offset →
+deviation/variation → normalized heading) MUST be deterministic, documented, and covered
+by unit tests with known vectors, including the 0°/360° wraparound.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Rationale: A marine compass feeding a chartplotter is a safety-relevant navigation
+instrument. Silently repeating or fabricating heading data is worse than reporting no
+data, because it can mislead a navigator who trusts the display.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. NMEA 2000 Compliance
+The device MUST behave as a well-mannered NMEA 2000 node: address claim (PGN 60928),
+product and configuration information (126996/126998), ISO request handling (59904), PGN
+list (126464), and heartbeat (126993). Primary output is Vessel Heading (PGN 127250).
+Secondary outputs are Rate of Turn (127251) and Attitude (127257). Transmit rates MUST
+follow NMEA 2000 defaults unless a spec documents and justifies otherwise, and rates MUST
+be configurable within safe limits. The device MUST never flood or disrupt the bus:
+bus-off, error-passive, and no-ACK conditions MUST be detected, logged, and recovered from
+automatically. The project MUST use an established NMEA 2000 library (e.g. the
+ttlappalainen NMEA2000 stack) paired with an ESP32-S3 TWAI-compatible driver, and that
+driver's S3 compatibility MUST be verified before adoption.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Rationale: The device shares a physical bus with other critical marine electronics.
+Protocol misbehavior or a misbehaving node can degrade or disrupt instruments beyond the
+compass itself.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Real-Time Isolation
+Sensor reading and NMEA 2000 transmission are time-critical and MUST never be blocked by
+Wi-Fi, the web server, file-system access, or logging. The firmware MUST use FreeRTOS
+tasks with explicit core affinity and priorities, and MUST hand off data between tasks
+through thread-safe mechanisms (queues, mutexes, or atomic snapshots) — never through
+unprotected globals. Features MUST degrade independently: if Wi-Fi fails, compass output
+MUST continue; if CAN fails, the web UI MUST still work and MUST show the fault. A task
+watchdog MUST be enabled. Time-critical paths MUST NOT use `delay()`-based busy logic.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Rationale: The compass's core job — reading the IMU and publishing heading to the bus —
+must keep working even when a secondary subsystem (Wi-Fi, web UI, logging) misbehaves or
+is under load.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Hardware-in-the-Loop Verification (NON-NEGOTIABLE)
+A task is not done until it builds cleanly, passes tests, is flashed to the connected
+device, and its behavior is confirmed from real serial output. Testing MUST proceed in
+layers:
+1. `pio test -e native` for pure logic (math, conversions, PGN field encoding, config
+   parsing) with no hardware dependencies.
+2. `pio test -e <device-env>` for on-target Unity tests (sensor communication, TWAI
+   driver start/stop, file system).
+3. Runtime validation: flash the firmware, capture serial output with a bounded timeout,
+   and check for expected structured log lines.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Firmware MUST emit machine-parseable diagnostic lines over USB serial (e.g.
+`[N2K] tx pgn=127250 ok`, `[IMU] hdg=123.4 acc=3`, `[SYS] heap=... uptime=...`) so the
+agent can assert on them. The agent MUST NOT start a serial monitor that blocks forever —
+every monitor or read MUST use a timeout, and the serial port MUST be released before any
+upload. If CAN frames cannot be acknowledged on the bench (no other node present), the
+agent MUST use TWAI no-ACK or self-test mode for bench validation and MUST state clearly
+that real-bus verification is still pending. Anything the agent cannot observe (what the
+chartplotter displays, physical heading accuracy) MUST become an explicit manual
+verification checklist item for the human, and MUST NOT be assumed to pass.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+Rationale: This is embedded firmware for a physical instrument with real hardware
+attached to the development machine; claims of "done" that are not backed by an actual
+build, flash, and observed serial output are unverifiable and unacceptable.
+
+### V. Hardware Abstraction and Configuration
+All pin assignments MUST live in one configuration header. Pins MUST avoid ESP32-S3 GPIOs
+reserved on the N16R8 module (26–37 for flash/octal PSRAM), native USB (19/20), and
+strapping pins (0, 3, 45, 46) unless explicitly justified in that configuration header.
+Drivers for the IMU and CAN MUST sit behind thin interfaces so that core logic compiles
+and is testable in the native environment. User settings (mounting offset,
+deviation/variation source, PGN rates, NMEA 2000 device instance, Wi-Fi credentials,
+sensor calibration data) MUST be persisted in NVS or LittleFS, MUST be validated on load,
+and MUST fall back to safe defaults when corrupted.
+
+Rationale: Centralized pin configuration and thin driver interfaces keep hardware-specific
+detail out of core logic, which is what makes native unit testing (Principle IV) possible
+in the first place.
+
+### VI. Web UI: Simple, Local, Robust
+The UI MUST work fully offline on a boat with no internet: no CDN dependencies, all
+assets served from flash. Access Point mode is the default, with optional Station mode for
+bench development and updates. Live data MUST be pushed via WebSocket or Server-Sent
+Events at a rate that cannot starve real-time tasks. The UI MUST provide: live heading,
+pitch, roll, and rate of turn; sensor calibration status and controls; NMEA 2000 bus
+status (address, error counters, TX counts); settings; and firmware version and OTA
+update. The UI MUST prioritize clarity and readability in sunlight over visual flourish:
+large numerals, high contrast, mobile-first layout, and it MUST stay lightweight and
+dependency-free. A JSON status endpoint (e.g. `/api/status`) MUST mirror the UI data so it
+can be tested programmatically.
+
+Rationale: The UI runs disconnected from the internet, is read on a bright cockpit or deck
+in direct sunlight, and must be verifiable by the agent through a plain HTTP endpoint
+rather than only through visual inspection.
+
+### VII. Reliability and Field Safety
+OTA updates MUST use a dual-partition scheme with rollback on failed boot. Brownouts,
+resets, and reset reasons MUST be logged and exposed in the UI. The device MUST boot to a
+working compass state without any user interaction. Documentation MUST note the electrical
+rules for a safe NMEA 2000 installation: power from the backbone through a proper
+regulator, a declared Load Equivalency Number, and no extra 120 Ω termination on a drop
+cable (remove it from the VP230 module if present).
+
+Rationale: This device is installed on a boat, often unattended, and a bad update or a
+brownout must not leave the vessel without a working compass or degrade the shared NMEA
+2000 backbone.
+
+## Technical Constraints
+
+- Build system: PlatformIO. The platform, framework, and library versions MUST be pinned
+  in `platformio.ini` — no floating versions.
+- Framework: Arduino on ESP-IDF, unless a plan documents a justified reason to use pure
+  ESP-IDF.
+- Board configuration MUST correctly declare 16 MB flash, octal PSRAM (`qio_opi`), and an
+  OTA-capable partition table.
+- Required environments: a device environment for the ESP32-S3 and a `native` test
+  environment.
+- Language: modern C++ (C++17 or newer). No dynamic allocation in time-critical loops.
+  Use PSRAM for large buffers where it helps.
+- Builds MUST have zero compiler warnings in project code.
+
+## Development Workflow
+
+- Spec-driven: spec → plan → tasks → implement. Specs describe observable behavior,
+  including what appears on the bus, in serial output, and in the UI.
+- Every task MUST define how it will be verified: native test, on-device test, serial
+  assertion, or manual checklist item.
+- Implementation loop per task: build → native tests → upload → on-device tests → serial
+  validation → report results with the actual captured output.
+- Commits MUST be small and focused. Each commit MUST build.
+- A hardware behavior MUST NOT be reported as verified unless it was actually observed.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution overrides conflicting guidance in specs, plans, or tasks. Plans MUST
+include a constitution check that lists any deviations along with their justification.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Amendments require a documented rationale and a semantic version bump:
+- MAJOR: removing or redefining a principle.
+- MINOR: adding a principle or materially expanding guidance.
+- PATCH: clarifications and non-semantic refinements.
+
+The ratification date and the last-amended date MUST both be recorded and kept current.
+
+Principles I (Navigation Data Integrity) and IV (Hardware-in-the-Loop Verification) are
+non-negotiable and MUST NOT be waived by a plan.
+
+**Version**: 1.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
