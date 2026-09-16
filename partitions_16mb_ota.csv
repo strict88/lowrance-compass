@@ -1,0 +1,10 @@
+# Name,     Type, SubType,  Offset,   Size,       Flags
+# Custom OTA-capable partition table for the ESP32-S3-N16R8 (16 MiB flash).
+# Replaces the default_16MB.csv, which has no second OTA app slot
+# (constitution Principle VII: dual-partition OTA with rollback).
+# See specs/001-calibration-guided-setup/research.md section 8 for sizing rationale.
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x300000,
+app1,     app,  ota_1,    0x310000, 0x300000,
+littlefs, data, spiffs,   0x610000, 0x9F0000,
