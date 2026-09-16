@@ -46,6 +46,21 @@ void test_below_high_accuracy_refuses_to_save(void);
 void test_load_before_any_save_reports_absent(void);
 void test_high_quality_save_never_overwritten_by_a_failed_attempt(void);
 
+// test_readiness_summary.cpp
+void test_stage_status_derives_purely_from_record_presence(void);
+void test_readiness_none_done(void);
+void test_readiness_only_a_done(void);
+void test_readiness_a_and_b_done(void);
+void test_readiness_all_three_done(void);
+void test_readiness_withheld_overrides_all_done(void);
+void test_readiness_withheld_overrides_partial_done(void);
+void test_stage_status_never_flips_without_a_record_change(void);
+
+// test_reset_confirmation.cpp
+void test_reset_without_confirm_leaves_record_unchanged(void);
+void test_reset_with_confirm_clears_the_record(void);
+void test_reset_only_clears_the_targeted_stage(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -84,6 +99,19 @@ int main(int argc, char **argv)
     RUN_TEST(test_below_high_accuracy_refuses_to_save);
     RUN_TEST(test_load_before_any_save_reports_absent);
     RUN_TEST(test_high_quality_save_never_overwritten_by_a_failed_attempt);
+
+    RUN_TEST(test_stage_status_derives_purely_from_record_presence);
+    RUN_TEST(test_readiness_none_done);
+    RUN_TEST(test_readiness_only_a_done);
+    RUN_TEST(test_readiness_a_and_b_done);
+    RUN_TEST(test_readiness_all_three_done);
+    RUN_TEST(test_readiness_withheld_overrides_all_done);
+    RUN_TEST(test_readiness_withheld_overrides_partial_done);
+    RUN_TEST(test_stage_status_never_flips_without_a_record_change);
+
+    RUN_TEST(test_reset_without_confirm_leaves_record_unchanged);
+    RUN_TEST(test_reset_with_confirm_clears_the_record);
+    RUN_TEST(test_reset_only_clears_the_targeted_stage);
 
     return UNITY_END();
 }

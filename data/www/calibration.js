@@ -17,6 +17,8 @@
   var qualityGyroEl = document.getElementById("quality-gyro");
   var positionsRowEl = document.getElementById("positions-row");
   var coverageFillEl = document.getElementById("coverage-bar-fill");
+  var stageBPillEl = document.getElementById("stage-b-status-pill");
+  var stageCPillEl = document.getElementById("stage-c-status-pill");
 
   var kPositionLabels = {
     POS_X: "+X",
@@ -120,10 +122,21 @@
       renderPositions(progress.positions_done);
       coverageFillEl.style.width = (progress.rotation_coverage_pct || 0) + "%";
     } else if (stageA && stageA.state === "DONE") {
-      setStatusPill("Done", "done");
+      var savedAt = stageA.saved_at ? new Date(stageA.saved_at).toLocaleDateString() : "date unavailable";
+      setStatusPill("Done · " + savedAt, "done");
     } else {
       setStatusPill("Not done", "not-done");
     }
+
+    updatePlaceholderPill(stageBPillEl, stages.b);
+    updatePlaceholderPill(stageCPillEl, stages.c);
+  }
+
+  function updatePlaceholderPill(pillEl, stageStatus) {
+    if (!pillEl) return;
+    var done = stageStatus && stageStatus.state === "DONE";
+    pillEl.textContent = done ? "Done" : "Not done";
+    pillEl.className = "status-pill status-pill--" + (done ? "done" : "not-done");
   }
 
   function showResult(msg) {

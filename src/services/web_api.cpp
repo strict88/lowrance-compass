@@ -6,6 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
+#include "calibration/readiness.h"
 #include "guide/guide_content.h"
 #include "n2k_codec/pgn_codec.h"
 #include "tasks/shared_state.h"
@@ -81,13 +82,25 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     doc["schema"] = 1;
 
     shared_state::StageAStatusSnapshot stage_a_status = shared_state::getStageAStatus();
-
-    // TODO(Phase 4/US2): replace with the real readiness module
-    // (src/calibration/readiness.h) once Stage B/C exist; this is already
-    // accurate for a bench-only (Stage A only) setup.
-    doc["readiness"] = stage_a_status.persisted_done ? "USABLE_INCOMPLETE" : "NOT_CALIBRATED";
-
     heading::HeadingReading reading = shared_state::getHeadingReading();
+
+    calibration::ReadinessInput readiness_input;
+    readiness_input.stage_a_done = stage_a_status.persisted_done;
+    // TODO(Phase 6/8): stage_b_done/stage_c_done once those stages exist.
+    readiness_input.heading_currently_withheld = !reading.valid;
+    switch (calibration::deriveReadiness(readiness_input))
+    {
+        case calibration::Readiness::kReady:
+            doc["readiness"] = "READY";
+            break;
+        case calibration::Readiness::kUsableIncomplete:
+            doc["readiness"] = "USABLE_INCOMPLETE";
+            break;
+        case calibration::Readiness::kNotCalibrated:
+        default:
+            doc["readiness"] = "NOT_CALIBRATED";
+            break;
+    }
     JsonObject heading_obj = doc["heading"].to<JsonObject>();
     heading_obj["valid"] = reading.valid;
     heading_obj["heading_deg"] = reading.heading_rad * kRadToDeg;

@@ -71,17 +71,46 @@ window.CompassBus = (function () {
         typeof status.n2k.address === "number" ? String(status.n2k.address) : "--";
     }
 
-    if (status.readiness) {
-      if (status.readiness === "READY") {
-        readinessBanner.hidden = true;
-      } else {
-        readinessBanner.hidden = false;
-        readinessBanner.textContent =
-          status.readiness === "NOT_CALIBRATED"
-            ? "Not calibrated yet -- open the Calibration tab to get started."
-            : "Calibration incomplete -- some accuracy may be missing.";
-      }
+    renderReadinessBanner(status);
+  }
+
+  // FR-003 (first-boot welcome) / FR-004 (explain what's lost by skipping a
+  // stage): the banner text is specific to *why* readiness isn't READY, not
+  // just a generic warning.
+  function renderReadinessBanner(status) {
+    if (!status.readiness) return;
+
+    if (status.readiness === "READY") {
+      readinessBanner.hidden = true;
+      return;
     }
+
+    readinessBanner.hidden = false;
+    var stages = status.stages || {};
+    var stageADone = stages.a && stages.a.state === "DONE";
+
+    if (!stageADone) {
+      readinessBanner.textContent =
+        status.heading && !status.heading.valid && status.heading.reason_if_invalid === "SENSOR_ACCURACY_LOW"
+          ? "Calibration in progress -- heading is withheld until sensor accuracy reaches High on all three sensors."
+          : "Welcome! This compass hasn't been calibrated yet. Open the Calibration tab to complete Stage A " +
+            "(bench sensor calibration) before it can transmit a trustworthy heading.";
+      return;
+    }
+
+    if (status.heading && !status.heading.valid) {
+      readinessBanner.textContent =
+        "Heading is temporarily withheld (" + (status.heading.reason_if_invalid || "unknown reason") +
+        ") even though Stage A was previously completed.";
+      return;
+    }
+
+    var missing = [];
+    if (!(stages.b && stages.b.state === "DONE")) missing.push("installation alignment (Stage B)");
+    if (!(stages.c && stages.c.state === "DONE")) missing.push("compass swing (Stage C)");
+    readinessBanner.textContent =
+      "Usable, but incomplete: heading is transmitting, but without " + missing.join(" and ") +
+      ", it will not account for mounting offset or the boat's own magnetic deviation.";
   }
 
   var socket = null;

@@ -172,6 +172,10 @@ body {
   gap: 14px;
 }
 
+.cal-card--placeholder {
+  opacity: 0.75;
+}
+
 .cal-card__header {
   display: flex;
   align-items: center;
