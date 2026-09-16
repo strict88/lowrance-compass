@@ -46,6 +46,11 @@ constexpr int kStageCManualPointCount = 8;
 constexpr int kSsidMinLen = 1;
 constexpr int kSsidMaxLen = 32;
 
+// --- Heading smoothing (FR-043) ---
+constexpr float kHeadingSmoothStationaryAlpha = 0.05f;
+constexpr float kHeadingSmoothTurningAlpha = 0.5f;
+constexpr float kHeadingSmoothTurnThresholdDegS = 5.0f;
+
 // --- Session / recovery / UI ---
 constexpr float kCalibrationSessionInactivityTimeoutS = 120.0f;
 constexpr float kNetworkResetBootHoldS = 10.0f;
