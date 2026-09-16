@@ -168,7 +168,36 @@
 </main>
 
 <main id="view-settings" class="view" data-view="settings" hidden>
-  <p class="placeholder">Wi-Fi network settings appear here once the Settings tab is implemented.</p>
+  <section class="cal-card">
+    <div class="cal-card__header">
+      <h2>Wi-Fi network name</h2>
+    </div>
+
+    <p>Current network name: <strong id="settings-current-ssid">--</strong></p>
+
+    <label for="settings-ssid-input">New network name (1-32 characters, no leading/trailing spaces)</label>
+    <input id="settings-ssid-input" type="text" maxlength="32">
+    <div id="settings-ssid-error" class="invalid-reason" hidden></div>
+
+    <div id="settings-warning" class="banner banner--warn" hidden></div>
+
+    <div class="cal-actions">
+      <button id="settings-save-btn" class="btn btn--primary">Save</button>
+    </div>
+
+    <div id="settings-result" class="cal-result" hidden></div>
+  </section>
+
+  <section class="cal-card cal-card--placeholder">
+    <div class="cal-card__header">
+      <h2>Network recovery</h2>
+    </div>
+    <p class="placeholder">Can't reconnect after a name change? Hold the device's BOOT button for a few seconds
+      to reset the network name back to the factory default, or use the button below from this session.</p>
+    <div class="cal-actions">
+      <button id="settings-network-reset-btn" class="btn btn--secondary">Reset network name to default</button>
+    </div>
+  </section>
 </main>
 
 <nav class="tabbar">
@@ -179,5 +208,6 @@
 
 <script src="app.js"></script>
 <script src="calibration.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

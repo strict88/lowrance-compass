@@ -5,6 +5,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <WiFi.h>
 
 #include "calibration/readiness.h"
 #include "guide/guide_content.h"
@@ -208,8 +209,9 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     n2k["cog_sog_source_present"] = n2k_service.cogSogSourcePresent();
     n2k["variation_source_present"] = n2k_service.variationSourcePresent();
 
-    // TODO(US5/Settings): replace with the real persisted NetworkSettings.ssid.
-    doc["settings"]["ssid"] = "LowranceCompass";
+    char ssid[33];
+    shared_state::getCurrentSsid(ssid, sizeof(ssid));
+    doc["settings"]["ssid"] = ssid;
 
     JsonObject system = doc["system"].to<JsonObject>();
     system["firmware_version"] = "0.1.0";
@@ -416,6 +418,50 @@ void start(CalibrationService &calibration_service, N2kService &n2k_service, Clo
     });
 #endif
 
+    g_server.on("/api/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+        char ssid[33];
+        shared_state::getCurrentSsid(ssid, sizeof(ssid));
+        JsonDocument doc;
+        doc["schema"] = 1;
+        doc["ssid"] = ssid;
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        serializeJson(doc, *response);
+        request->send(response);
+    });
+    g_server.on("/api/settings", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        shared_state::AppCommand cmd;
+        cmd.type = shared_state::AppCommandType::kSettingsSave;
+        const char *ssid = json["ssid"] | "";
+        snprintf(cmd.string_param, sizeof(cmd.string_param), "%s", ssid);
+        char result_buf[256];
+        cmd.result_buf = result_buf;
+        cmd.result_buf_len = sizeof(result_buf);
+        cmd.done_sem = xSemaphoreCreateBinary();
+        if (cmd.done_sem == nullptr)
+        {
+            request->send(503, "application/json", "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"out of memory\"}}");
+            return;
+        }
+        if (!shared_state::postAppCommand(cmd, 200))
+        {
+            vSemaphoreDelete(cmd.done_sem);
+            request->send(503, "application/json", "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"command queue full\"}}");
+            return;
+        }
+        if (xSemaphoreTake(cmd.done_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
+        {
+            vSemaphoreDelete(cmd.done_sem);
+            request->send(504, "application/json",
+                           "{\"schema\":1,\"error\":{\"code\":\"TIMEOUT\",\"message\":\"no response from app task\"}}");
+            return;
+        }
+        vSemaphoreDelete(cmd.done_sem);
+        request->send(cmd.success ? 200 : 400, "application/json", result_buf);
+    });
+    g_server.on("/api/network/reset", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        sendConfirmCommandAndRespond(request, json, shared_state::AppCommandType::kNetworkReset);
+    });
+
     g_server.on("/api/calibration/c/start", HTTP_POST, [](AsyncWebServerRequest *request) {
         // TODO(Phase 8/US4): parse the {"mode":"gps"|"manual"} body once
         // Stage C exists; defaults to the GPS-swing sub-flow for now.
@@ -453,6 +499,30 @@ void broadcastStatusIfDue(CalibrationService &calibration_service, N2kService &n
     doc["type"] = "status";
 
     char buf[768];
+    size_t len = serializeJson(doc, buf, sizeof(buf));
+    g_ws.textAll(buf, len);
+}
+
+void configureAccessPoint(const char *ssid)
+{
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(ssid);
+}
+
+void broadcastSettingsChanged(const char *ssid, uint32_t applies_in_s)
+{
+    if (g_ws.count() == 0)
+    {
+        return;
+    }
+
+    JsonDocument doc;
+    doc["type"] = "settings_changed";
+    doc["schema"] = 1;
+    doc["ssid"] = ssid;
+    doc["applies_in_s"] = applies_in_s;
+
+    char buf[192];
     size_t len = serializeJson(doc, buf, sizeof(buf));
     g_ws.textAll(buf, len);
 }

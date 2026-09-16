@@ -174,4 +174,10 @@ struct StageBStatusSnapshot
 void publishStageBStatus(const StageBStatusSnapshot &status);
 StageBStatusSnapshot getStageBStatus();
 
+// The current SSID, published by AppTask (which owns SettingsService)
+// whenever it changes, for web_api's GET /api/status.settings.ssid (its
+// route handlers run in a different task context than AppTask).
+void publishCurrentSsid(const char *ssid);
+void getCurrentSsid(char *out, size_t out_len);
+
 }  // namespace shared_state

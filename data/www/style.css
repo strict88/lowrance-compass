@@ -374,3 +374,24 @@ body {
   background: #2a313c;
   color: var(--fg);
 }
+
+/* Settings tab */
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: #9aa4b2;
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  background: #1a1f26;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--fg);
+  font-size: 1rem;
+  margin-bottom: 12px;
+}

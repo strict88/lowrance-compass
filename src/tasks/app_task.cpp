@@ -9,9 +9,12 @@
 #include "calibration/stage_b.h"
 #include "drivers/kv_store/record_envelope.h"
 #include "n2k_codec/variation.h"
+#include "pin_config.h"
 #include "services/diag_log.h"
 #include "services/web_api.h"
+#include "settings/network_settings.h"
 #include "tasks/shared_state.h"
+#include "thresholds.h"
 
 namespace app_task
 {
@@ -26,6 +29,7 @@ constexpr uint32_t kCommandWaitMs = 200;
 constexpr const char *kFirmwareVersion = "0.1.0";
 constexpr float kRadToDeg = 57.29577951308232f;
 constexpr float kDegToRad = 1.0f / kRadToDeg;
+constexpr uint32_t kSettingsApplyDelayS = 5;
 
 const char *stageName(CalibrationService::Stage stage)
 {
@@ -63,6 +67,7 @@ struct Context
     ImuDriver *imu_driver;
     KeyValueStore *stage_a_store;
     KeyValueStore *stage_b_store;
+    SettingsService *settings_service;
     Clock *clock;
 };
 
@@ -428,6 +433,60 @@ void handleStageBReset(Context &ctx, calibration::InstallationAlignment *saved_a
     respond(cmd, true, "{\"schema\":1,\"reset\":true}");
 }
 
+void handleSettingsSave(Context &ctx, shared_state::AppCommand &cmd)
+{
+    settings::NetworkSettings new_settings;
+    snprintf(new_settings.ssid, sizeof(new_settings.ssid), "%s", cmd.string_param);
+
+    if (!settings::validateSsid(new_settings.ssid))
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"SSID_INVALID\",\"message\":\"SSID must be 1-32 characters "
+                "with no leading or trailing whitespace\"}}");
+        return;
+    }
+
+    float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
+    if (!ctx.settings_service->save(new_settings, now_s, kSettingsApplyDelayS))
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"SAVE_FAILED\",\"message\":\"could not persist settings\"}}");
+        return;
+    }
+
+    diag_log::Line("WIFI").token("ssid_changed").kv("to", new_settings.ssid).kv("applies_in_s", static_cast<long>(kSettingsApplyDelayS)).emit();
+    web_api::broadcastSettingsChanged(new_settings.ssid, kSettingsApplyDelayS);
+
+    char body[128];
+    snprintf(body, sizeof(body), "{\"schema\":1,\"ssid\":\"%s\",\"applies_in_s\":%lu}", new_settings.ssid,
+             static_cast<unsigned long>(kSettingsApplyDelayS));
+    respond(cmd, true, body);
+}
+
+void handleNetworkReset(Context &ctx, const char *trigger, shared_state::AppCommand *cmd)
+{
+    if (cmd != nullptr && !cmd->confirm)
+    {
+        respond(*cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"CONFIRM_REQUIRED\",\"message\":\"reset requires "
+                "confirm:true\"}}");
+        return;
+    }
+
+    float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
+    ctx.settings_service->resetToDefault(now_s);
+    diag_log::Line("WIFI").token("network_reset").kv("trigger", trigger).emit();
+    web_api::broadcastSettingsChanged(ctx.settings_service->current().ssid, 0);
+
+    if (cmd != nullptr)
+    {
+        char body[128];
+        snprintf(body, sizeof(body), "{\"schema\":1,\"ssid\":\"%s\",\"applies_in_s\":0}",
+                 ctx.settings_service->current().ssid);
+        respond(*cmd, true, body);
+    }
+}
+
 void handleOtherStart(shared_state::AppCommand &cmd)
 {
     // Stage C isn't implemented yet (its own later phase).
@@ -490,10 +549,16 @@ void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
             ctx.calibration_service->cancel(CalibrationService::Stage::kC);
             respond(cmd, true, "{\"schema\":1,\"cancelled\":true}");
             break;
+        case shared_state::AppCommandType::kSettingsSave:
+            handleSettingsSave(ctx, cmd);
+            break;
+        case shared_state::AppCommandType::kNetworkReset:
+            handleNetworkReset(ctx, "http_api", &cmd);
+            break;
         default:
-            // Stage C and Settings/network-reset are wired up by their own
-            // later tasks (User Stories 4/5) -- not reachable yet since no
-            // HTTP route posts these command types until then.
+            // Stage C is wired up by its own later task (User Story 4) --
+            // not reachable yet since no HTTP route posts these command
+            // types until then.
             respond(cmd, false,
                     "{\"schema\":1,\"error\":{\"code\":\"NOT_IMPLEMENTED\",\"message\":\"not yet implemented\"}}");
             break;
@@ -652,6 +717,15 @@ void taskFn(void *param)
 
     web_api::start(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
 
+    ctx->settings_service->init();
+    shared_state::publishCurrentSsid(ctx->settings_service->current().ssid);
+    web_api::configureAccessPoint(ctx->settings_service->current().ssid);
+
+    pinMode(pins::kBootButton, INPUT_PULLUP);  // read-only, per constitution Principle V -- never driven
+    bool boot_button_pressed = false;
+    uint32_t boot_button_pressed_since_ms = 0;
+    bool boot_button_triggered = false;
+
     calibration::StageA stage_a;
     calibration::SensorCalibrationProfile saved_profile{};
     bool has_saved_profile = calibration::loadSensorCalibrationProfile(*ctx->stage_a_store, saved_profile);
@@ -702,6 +776,43 @@ void taskFn(void *param)
             }
         }
 
+        {
+            float now_s = static_cast<float>(ctx->clock->monotonicMillis()) / 1000.0f;
+            if (ctx->settings_service->isRestartDue(now_s))
+            {
+                web_api::configureAccessPoint(ctx->settings_service->current().ssid);
+                shared_state::publishCurrentSsid(ctx->settings_service->current().ssid);
+                diag_log::Line("WIFI").token("ap_restart").kv("ssid", ctx->settings_service->current().ssid).emit();
+                ctx->settings_service->clearPendingRestart();
+            }
+        }
+
+        // FR-038 network-recovery path: hold BOOT for NETWORK_RESET_BOOT_HOLD_S
+        // to reset the SSID to factory default. BOOT (GPIO0) is read-only here,
+        // active-low (pressed = LOW) -- never driven, per pin_config.h.
+        {
+            bool pressed_now = digitalRead(pins::kBootButton) == LOW;
+            uint32_t now_ms = millis();
+            if (pressed_now && !boot_button_pressed)
+            {
+                boot_button_pressed = true;
+                boot_button_pressed_since_ms = now_ms;
+                boot_button_triggered = false;
+            }
+            else if (!pressed_now)
+            {
+                boot_button_pressed = false;
+                boot_button_triggered = false;
+            }
+            else if (boot_button_pressed && !boot_button_triggered &&
+                     (now_ms - boot_button_pressed_since_ms) >=
+                         static_cast<uint32_t>(thresholds::kNetworkResetBootHoldS * 1000.0f))
+            {
+                boot_button_triggered = true;
+                handleNetworkReset(*ctx, "boot_hold", nullptr);
+            }
+        }
+
         web_api::broadcastStatusIfDue(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
     }
 }
@@ -709,9 +820,11 @@ void taskFn(void *param)
 }  // namespace
 
 void start(CalibrationService &calibration_service, N2kService &n2k_service, ImuDriver &imu_driver,
-           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, Clock &clock)
+           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, SettingsService &settings_service,
+           Clock &clock)
 {
-    static Context ctx{&calibration_service, &n2k_service, &imu_driver, &stage_a_store, &stage_b_store, &clock};
+    static Context ctx{&calibration_service, &n2k_service,   &imu_driver, &stage_a_store,
+                        &stage_b_store,       &settings_service, &clock};
     xTaskCreatePinnedToCore(taskFn, "AppTask", kStackSize, &ctx, kPriority, nullptr, kCoreId);
 }
 

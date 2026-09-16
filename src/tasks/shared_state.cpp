@@ -1,5 +1,7 @@
 #include "shared_state.h"
 
+#include <cstring>
+
 namespace shared_state
 {
 
@@ -25,6 +27,9 @@ DebugGpsInject g_debug_gps_inject;
 SemaphoreHandle_t g_stage_b_status_mutex = nullptr;
 StageBStatusSnapshot g_stage_b_status;
 
+SemaphoreHandle_t g_ssid_mutex = nullptr;
+char g_current_ssid[33] = "LowranceCompass";
+
 QueueHandle_t g_app_command_queue = nullptr;
 }  // namespace
 
@@ -36,6 +41,7 @@ void init()
     g_stage_a_status_mutex = xSemaphoreCreateMutex();
     g_debug_gps_mutex = xSemaphoreCreateMutex();
     g_stage_b_status_mutex = xSemaphoreCreateMutex();
+    g_ssid_mutex = xSemaphoreCreateMutex();
     g_app_command_queue = xQueueCreate(kAppCommandQueueDepth, sizeof(AppCommand));
 }
 
@@ -127,6 +133,22 @@ StageBStatusSnapshot getStageBStatus()
     StageBStatusSnapshot copy = g_stage_b_status;
     xSemaphoreGive(g_stage_b_status_mutex);
     return copy;
+}
+
+void publishCurrentSsid(const char *ssid)
+{
+    xSemaphoreTake(g_ssid_mutex, portMAX_DELAY);
+    strncpy(g_current_ssid, ssid, sizeof(g_current_ssid) - 1);
+    g_current_ssid[sizeof(g_current_ssid) - 1] = '\0';
+    xSemaphoreGive(g_ssid_mutex);
+}
+
+void getCurrentSsid(char *out, size_t out_len)
+{
+    xSemaphoreTake(g_ssid_mutex, portMAX_DELAY);
+    strncpy(out, g_current_ssid, out_len - 1);
+    out[out_len - 1] = '\0';
+    xSemaphoreGive(g_ssid_mutex);
 }
 
 bool postAppCommand(const AppCommand &cmd, uint32_t timeout_ms)

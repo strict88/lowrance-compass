@@ -5,6 +5,7 @@
 #include "drivers/kv_store/kv_store.h"
 #include "services/calibration_service.h"
 #include "services/n2k_service.h"
+#include "services/settings_service.h"
 
 // AppTask: Core 0. Owns CalibrationService/SettingsService state,
 // persistence, and WebSocket broadcast; reads UI commands from
@@ -17,5 +18,6 @@
 namespace app_task
 {
 void start(CalibrationService &calibration_service, N2kService &n2k_service, ImuDriver &imu_driver,
-           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, Clock &clock);
+           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, SettingsService &settings_service,
+           Clock &clock);
 }

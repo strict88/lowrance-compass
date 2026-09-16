@@ -8,6 +8,7 @@
 #include "services/calibration_service.h"
 #include "services/diag_log.h"
 #include "services/n2k_service.h"
+#include "services/settings_service.h"
 #include "tasks/app_task.h"
 #include "tasks/imu_task.h"
 #include "tasks/n2k_task.h"
@@ -33,6 +34,8 @@ N2kService g_n2k_service(g_can_bus, g_clock, kEnableSelfTest);
 CalibrationService g_calibration_service(g_clock);
 NvsKeyValueStore g_stage_a_store("cal_a");
 NvsKeyValueStore g_stage_b_store("cal_b");
+NvsKeyValueStore g_settings_store("net");
+SettingsService g_settings_service(g_settings_store);
 
 const char *resetReasonName()
 {
@@ -78,7 +81,8 @@ void setup()
 
     imu_task::start(g_imu_driver);
     n2k_task::start(g_n2k_service);
-    app_task::start(g_calibration_service, g_n2k_service, g_imu_driver, g_stage_a_store, g_stage_b_store, g_clock);
+    app_task::start(g_calibration_service, g_n2k_service, g_imu_driver, g_stage_a_store, g_stage_b_store,
+                     g_settings_service, g_clock);
 
     diag_log::logBoot(kFirmwareVersion, resetReasonName(), ESP.getFreeHeap());
 }
