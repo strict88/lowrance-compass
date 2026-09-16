@@ -40,6 +40,12 @@ void test_cancel_from_awaiting_positions(void);
 void test_cancel_never_reports_done(void);
 void test_restart_after_cancel_starts_clean(void);
 
+// test_stage_a_persistence.cpp
+void test_save_and_load_round_trip(void);
+void test_below_high_accuracy_refuses_to_save(void);
+void test_load_before_any_save_reports_absent(void);
+void test_high_quality_save_never_overwritten_by_a_failed_attempt(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -73,6 +79,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_cancel_from_awaiting_positions);
     RUN_TEST(test_cancel_never_reports_done);
     RUN_TEST(test_restart_after_cancel_starts_clean);
+
+    RUN_TEST(test_save_and_load_round_trip);
+    RUN_TEST(test_below_high_accuracy_refuses_to_save);
+    RUN_TEST(test_load_before_any_save_reports_absent);
+    RUN_TEST(test_high_quality_save_never_overwritten_by_a_failed_attempt);
 
     return UNITY_END();
 }

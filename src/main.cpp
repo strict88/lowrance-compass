@@ -4,6 +4,7 @@
 #include "drivers/can_bus/twai_node_bus.h"
 #include "drivers/clock/clock.h"
 #include "drivers/imu_driver/imu_driver_bno08x.h"
+#include "drivers/kv_store/kv_store_nvs.h"
 #include "services/calibration_service.h"
 #include "services/diag_log.h"
 #include "services/n2k_service.h"
@@ -30,6 +31,7 @@ ImuDriverBno08x g_imu_driver;
 TwaiNodeBus g_can_bus;
 N2kService g_n2k_service(g_can_bus, g_clock, kEnableSelfTest);
 CalibrationService g_calibration_service(g_clock);
+NvsKeyValueStore g_stage_a_store("cal_a");
 
 const char *resetReasonName()
 {
@@ -75,7 +77,7 @@ void setup()
 
     imu_task::start(g_imu_driver);
     n2k_task::start(g_n2k_service);
-    app_task::start(g_calibration_service, g_n2k_service, g_clock);
+    app_task::start(g_calibration_service, g_n2k_service, g_imu_driver, g_stage_a_store, g_clock);
 
     diag_log::logBoot(kFirmwareVersion, resetReasonName(), ESP.getFreeHeap());
 }

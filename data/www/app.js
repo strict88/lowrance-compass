@@ -1,3 +1,20 @@
+// Shared WebSocket message bus: calibration.js/settings.js subscribe here
+// instead of opening their own /ws connection.
+window.CompassBus = (function () {
+  "use strict";
+  var listeners = {};
+  return {
+    on: function (type, fn) {
+      (listeners[type] = listeners[type] || []).push(fn);
+    },
+    _dispatch: function (msg) {
+      (listeners[msg.type] || []).forEach(function (fn) {
+        fn(msg);
+      });
+    },
+  };
+})();
+
 (function () {
   "use strict";
 
@@ -106,6 +123,7 @@
       if (msg.type === "status") {
         renderStatus(msg);
       }
+      window.CompassBus._dispatch(msg);
     };
   }
 

@@ -1,6 +1,7 @@
 #include "web_api.h"
 
 #include <ArduinoJson.h>
+#include <AsyncJson.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
@@ -72,17 +73,19 @@ const char *invalidReasonName(heading::InvalidReason reason)
 
 // Assembles the full GET /api/status body (contracts/rest-api.md), reused
 // for the periodic `status` WebSocket message (contracts/websocket.md).
-// Stage A/B/C readiness/persisted status is hardcoded NOT_DONE for now --
-// wired to the real persisted records by each stage's own later task
-// (T061/T095/T119); this is expected at this point in the build
-// (tasks.md's Foundational checkpoint: "No calibration stage exists yet").
+// Stage A is wired to its real persisted/live status via shared_state;
+// Stages B/C are still hardcoded NOT_DONE, wired up by their own later tasks
+// (T095/T119).
 void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service, N2kService &n2k_service, Clock &clock)
 {
     doc["schema"] = 1;
 
-    // TODO(Phase 4/US2): replace with real readiness derivation
-    // (src/calibration/readiness.h) once Stage A exists.
-    doc["readiness"] = "NOT_CALIBRATED";
+    shared_state::StageAStatusSnapshot stage_a_status = shared_state::getStageAStatus();
+
+    // TODO(Phase 4/US2): replace with the real readiness module
+    // (src/calibration/readiness.h) once Stage B/C exist; this is already
+    // accurate for a bench-only (Stage A only) setup.
+    doc["readiness"] = stage_a_status.persisted_done ? "USABLE_INCOMPLETE" : "NOT_CALIBRATED";
 
     heading::HeadingReading reading = shared_state::getHeadingReading();
     JsonObject heading_obj = doc["heading"].to<JsonObject>();
@@ -102,7 +105,23 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     }
 
     JsonObject stages = doc["stages"].to<JsonObject>();
-    for (const char *stage_key : {"a", "b", "c"})
+    JsonObject stage_a_obj = stages["a"].to<JsonObject>();
+    if (stage_a_status.persisted_done)
+    {
+        stage_a_obj["state"] = "DONE";
+        JsonObject quality = stage_a_obj["quality"].to<JsonObject>();
+        quality["mag"] = stage_a_status.saved_mag_accuracy;
+        quality["accel"] = stage_a_status.saved_accel_accuracy;
+        quality["gyro"] = stage_a_status.saved_gyro_accuracy;
+        stage_a_obj["saved_at"] = stage_a_status.saved_at_iso8601;
+    }
+    else
+    {
+        stage_a_obj["state"] = "NOT_DONE";
+        stage_a_obj["saved_at"] = nullptr;
+    }
+    // TODO(Phase 6/8): stages "b"/"c" once Stage B/C exist.
+    for (const char *stage_key : {"b", "c"})
     {
         JsonObject stage_obj = stages[stage_key].to<JsonObject>();
         stage_obj["state"] = "NOT_DONE";
@@ -112,7 +131,23 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     JsonObject session = doc["session"].to<JsonObject>();
     session["active_stage"] = stageName(calibration_service.activeStage());
     session["sub_state"] = "";
-    session["progress"].to<JsonObject>();
+    JsonObject progress = doc["session"]["progress"].to<JsonObject>();
+    if (stage_a_status.session_active)
+    {
+        progress["mag_acc"] = stage_a_status.live_mag_accuracy;
+        progress["accel_acc"] = stage_a_status.live_accel_accuracy;
+        progress["gyro_acc"] = stage_a_status.live_gyro_accuracy;
+        JsonArray positions = progress["positions_done"].to<JsonArray>();
+        static const char *kPositionNames[6] = {"POS_X", "NEG_X", "POS_Y", "NEG_Y", "POS_Z", "NEG_Z"};
+        for (int i = 0; i < 6; ++i)
+        {
+            if (stage_a_status.positions_done[i])
+            {
+                positions.add(kPositionNames[i]);
+            }
+        }
+        progress["rotation_coverage_pct"] = stage_a_status.rotation_coverage_pct;
+    }
 
     JsonObject n2k = doc["n2k"].to<JsonObject>();
     n2k["bus_state"] = busStateName(n2k_service.busState());
@@ -165,6 +200,42 @@ void sendCommandAndRespond(AsyncWebServerRequest *request, shared_state::AppComm
 
     int status = cmd.success ? 200 : 409;
     request->send(status, "application/json", result_buf);
+}
+
+void sendConfirmCommandAndRespond(AsyncWebServerRequest *request, JsonVariant &json, shared_state::AppCommandType type)
+{
+    shared_state::AppCommand cmd;
+    cmd.type = type;
+    cmd.confirm = json["confirm"] | false;
+    char result_buf[256];
+    cmd.result_buf = result_buf;
+    cmd.result_buf_len = sizeof(result_buf);
+    cmd.done_sem = xSemaphoreCreateBinary();
+    if (cmd.done_sem == nullptr)
+    {
+        request->send(503, "application/json",
+                       "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"out of memory\"}}");
+        return;
+    }
+
+    if (!shared_state::postAppCommand(cmd, 200))
+    {
+        vSemaphoreDelete(cmd.done_sem);
+        request->send(503, "application/json",
+                       "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"command queue full\"}}");
+        return;
+    }
+
+    if (xSemaphoreTake(cmd.done_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
+    {
+        vSemaphoreDelete(cmd.done_sem);
+        request->send(504, "application/json",
+                       "{\"schema\":1,\"error\":{\"code\":\"TIMEOUT\",\"message\":\"no response from app task\"}}");
+        return;
+    }
+    vSemaphoreDelete(cmd.done_sem);
+
+    request->send(cmd.success ? 200 : 400, "application/json", result_buf);
 }
 
 void onWsEvent(AsyncWebSocket * /*server*/, AsyncWebSocketClient * /*client*/, AwsEventType /*type*/, void * /*arg*/,
@@ -224,6 +295,9 @@ void start(CalibrationService &calibration_service, N2kService &n2k_service, Clo
     g_server.on("/api/calibration/a/cancel", HTTP_POST, [](AsyncWebServerRequest *request) {
         sendCommandAndRespond(request, shared_state::AppCommandType::kCalCancelA);
     });
+    g_server.on("/api/calibration/a/reset", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        sendConfirmCommandAndRespond(request, json, shared_state::AppCommandType::kCalResetA);
+    });
     g_server.on("/api/calibration/b/start", HTTP_POST, [](AsyncWebServerRequest *request) {
         sendCommandAndRespond(request, shared_state::AppCommandType::kCalStartB);
     });
@@ -267,6 +341,26 @@ void broadcastStatusIfDue(CalibrationService &calibration_service, N2kService &n
     doc["type"] = "status";
 
     char buf[768];
+    size_t len = serializeJson(doc, buf, sizeof(buf));
+    g_ws.textAll(buf, len);
+}
+
+void broadcastCalibrationResult(const char *stage, const char *outcome, const char *reason)
+{
+    if (g_ws.count() == 0)
+    {
+        return;
+    }
+
+    JsonDocument doc;
+    doc["type"] = "calibration_result";
+    doc["schema"] = 1;
+    doc["stage"] = stage;
+    doc["outcome"] = outcome;
+    doc["reason"] = reason != nullptr ? reason : nullptr;
+    doc["result"].to<JsonObject>();
+
+    char buf[256];
     size_t len = serializeJson(doc, buf, sizeof(buf));
     g_ws.textAll(buf, len);
 }

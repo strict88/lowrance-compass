@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "drivers/kv_store/kv_store.h"
 #include "heading/quaternion.h"
 #include "thresholds.h"
 
@@ -67,6 +68,34 @@ struct StageASample
     uint8_t gyro_accuracy = 0;
     float dt_s = 0.0f;
 };
+
+// The ESP32-side metadata that drives Stage A's status display
+// (data-model.md §1.1) -- the BNO08x's own Dynamic Calibration Data persists
+// separately, inside the sensor's own on-chip flash via the SH-2 "save DCD"
+// command (ImuDriver::saveDcd()), not here.
+struct SensorCalibrationProfile
+{
+    char saved_at_iso8601[32] = {0};
+    uint8_t mag_accuracy = 0;
+    uint8_t accel_accuracy = 0;
+    uint8_t gyro_accuracy = 0;
+    char firmware_version[16] = {0};
+};
+
+constexpr uint8_t kSensorCalibrationProfileSchemaVersion = 1;
+
+// Saves `profile` via the T012 record envelope (write-then-verify-then-
+// commit). Refuses (returns false, leaving any previous record untouched)
+// unless mag/accel/gyro are all High (3) -- FR-014's "MUST NOT overwrite an
+// existing saved calibration with a result of lower quality" held as an
+// invariant here too, not just by StageA's own Done-reachability.
+bool saveSensorCalibrationProfile(KeyValueStore &store, const SensorCalibrationProfile &profile);
+
+// Loads the persisted profile. Returns true (with `profile_out` filled) only
+// on Status::kOk; a schema/CRC mismatch or absent record both mean "treat as
+// not done" per data-model.md §5 and return false, leaving `profile_out`
+// untouched.
+bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out);
 
 class StageA
 {

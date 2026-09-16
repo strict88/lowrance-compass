@@ -42,6 +42,51 @@ struct HeadingCorrectionInputs
 void publishHeadingCorrectionInputs(const HeadingCorrectionInputs &inputs);
 HeadingCorrectionInputs getHeadingCorrectionInputs();
 
+// The raw IMU sample behind the latest HeadingReading, published alongside
+// it so AppTask can drive an active Stage A calibration attempt (which needs
+// the raw rotation vector/gyro/accuracy, not the corrected/gated heading)
+// without a second hardware dependency. `connected` mirrors
+// ImuDriver::isConnected() at publish time.
+struct RawImuSample
+{
+    heading::Quaternion raw_quat;
+    float gyro_x_rad_s = 0.0f;
+    float gyro_y_rad_s = 0.0f;
+    float gyro_z_rad_s = 0.0f;
+    uint8_t mag_accuracy = 0;
+    uint8_t accel_accuracy = 0;
+    uint8_t gyro_accuracy = 0;
+    bool connected = true;
+    uint32_t monotonic_ms = 0;
+};
+
+void publishRawImuSample(const RawImuSample &sample);
+RawImuSample getRawImuSample();
+
+// A web_api-facing snapshot of Stage A's persisted + live status
+// (contracts/rest-api.md's stages.a / session.progress.a shapes),
+// published by AppTask whenever it changes. Kept decoupled from
+// calibration/stage_a.h's own types so shared_state doesn't need to know
+// about calibration internals.
+struct StageAStatusSnapshot
+{
+    bool persisted_done = false;
+    uint8_t saved_mag_accuracy = 0;
+    uint8_t saved_accel_accuracy = 0;
+    uint8_t saved_gyro_accuracy = 0;
+    char saved_at_iso8601[32] = {0};
+
+    bool session_active = false;
+    uint8_t live_mag_accuracy = 0;
+    uint8_t live_accel_accuracy = 0;
+    uint8_t live_gyro_accuracy = 0;
+    bool positions_done[6] = {false, false, false, false, false, false};
+    float rotation_coverage_pct = 0.0f;
+};
+
+void publishStageAStatus(const StageAStatusSnapshot &status);
+StageAStatusSnapshot getStageAStatus();
+
 enum class AppCommandType
 {
     kCalStartA,

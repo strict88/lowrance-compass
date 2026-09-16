@@ -49,7 +49,59 @@
 </main>
 
 <main id="view-calibration" class="view" data-view="calibration" hidden>
-  <p class="placeholder">Calibration guide and per-stage status appear here once Stage A is implemented.</p>
+  <section id="stage-a-card" class="cal-card">
+    <div class="cal-card__header">
+      <h2>Stage A: Bench sensor calibration</h2>
+      <span id="stage-a-status-pill" class="status-pill status-pill--not-done">Not done</span>
+    </div>
+
+    <div id="stage-a-guide">
+      <p id="stage-a-what-why" class="cal-what-why"></p>
+      <div class="cal-block">
+        <h3>Before you start</h3>
+        <ul id="stage-a-before-list" class="cal-checklist"></ul>
+      </div>
+      <div class="cal-block">
+        <h3>Steps</h3>
+        <ol id="stage-a-steps" class="cal-steps"></ol>
+      </div>
+      <p id="stage-a-duration" class="cal-duration"></p>
+    </div>
+
+    <div id="stage-a-progress" class="cal-progress" hidden>
+      <div class="quality-row">
+        <div class="quality-tile">
+          <div class="quality-label">Magnetometer</div>
+          <div id="quality-mag" class="quality-dots"></div>
+        </div>
+        <div class="quality-tile">
+          <div class="quality-label">Accelerometer</div>
+          <div id="quality-accel" class="quality-dots"></div>
+        </div>
+        <div class="quality-tile">
+          <div class="quality-label">Gyroscope</div>
+          <div id="quality-gyro" class="quality-dots"></div>
+        </div>
+      </div>
+
+      <div class="positions-row" id="positions-row"></div>
+
+      <div class="coverage-bar">
+        <div class="coverage-bar__label">Rotation coverage</div>
+        <div class="coverage-bar__track">
+          <div id="coverage-bar-fill" class="coverage-bar__fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="stage-a-result" class="cal-result" hidden></div>
+
+    <div class="cal-actions">
+      <button id="stage-a-start-btn" class="btn btn--primary">Start</button>
+      <button id="stage-a-cancel-btn" class="btn btn--secondary" hidden>Cancel</button>
+      <button id="stage-a-recalibrate-btn" class="btn btn--secondary" hidden>Recalibrate</button>
+    </div>
+  </section>
 </main>
 
 <main id="view-settings" class="view" data-view="settings" hidden>
@@ -63,5 +115,6 @@
 </nav>
 
 <script src="app.js"></script>
+<script src="calibration.js"></script>
 </body>
 </html>

@@ -22,4 +22,10 @@ void start(CalibrationService &calibration_service, N2kService &n2k_service, Clo
 // constitution Principle III).
 void broadcastStatusIfDue(CalibrationService &calibration_service, N2kService &n2k_service, Clock &clock);
 
+// Sends a one-shot `calibration_result` WebSocket message (contracts/
+// websocket.md) when a stage reaches a terminal or result-ready state.
+// `outcome` in {"SAVED","REJECTED","CANCELLED","TIMED_OUT"}; `reason` may be
+// nullptr.
+void broadcastCalibrationResult(const char *stage, const char *outcome, const char *reason);
+
 }  // namespace web_api

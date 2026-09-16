@@ -101,6 +101,18 @@ void taskFn(void * /*param*/)
 
         shared_state::publishHeadingReading(result);
 
+        shared_state::RawImuSample raw_sample;
+        raw_sample.raw_quat = input.raw_quat;
+        raw_sample.gyro_x_rad_s = last_report.gyro_x_rad_s;
+        raw_sample.gyro_y_rad_s = last_report.gyro_y_rad_s;
+        raw_sample.gyro_z_rad_s = last_report.gyro_z_rad_s;
+        raw_sample.mag_accuracy = last_report.mag_accuracy;
+        raw_sample.accel_accuracy = last_report.accel_accuracy;
+        raw_sample.gyro_accuracy = last_report.gyro_accuracy;
+        raw_sample.connected = connected;
+        raw_sample.monotonic_ms = millis();
+        shared_state::publishRawImuSample(raw_sample);
+
         if (result.valid != was_valid)
         {
             if (result.valid)

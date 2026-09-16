@@ -1,9 +1,37 @@
 #include "stage_a.h"
 
 #include <cmath>
+#include <cstring>
+
+#include "drivers/kv_store/record_envelope.h"
 
 namespace calibration
 {
+
+bool saveSensorCalibrationProfile(KeyValueStore &store, const SensorCalibrationProfile &profile)
+{
+    constexpr uint8_t kRequiredAccuracy = 3;
+    if (profile.mag_accuracy < kRequiredAccuracy || profile.accel_accuracy < kRequiredAccuracy ||
+        profile.gyro_accuracy < kRequiredAccuracy)
+    {
+        return false;
+    }
+    return record_envelope::save(store, kSensorCalibrationProfileSchemaVersion,
+                                  reinterpret_cast<const uint8_t *>(&profile), sizeof(profile));
+}
+
+bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out)
+{
+    SensorCalibrationProfile loaded;
+    auto result = record_envelope::load(store, kSensorCalibrationProfileSchemaVersion,
+                                         reinterpret_cast<uint8_t *>(&loaded), sizeof(loaded));
+    if (result.status != record_envelope::Status::kOk)
+    {
+        return false;
+    }
+    profile_out = loaded;
+    return true;
+}
 
 namespace
 {
