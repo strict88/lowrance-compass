@@ -8,6 +8,7 @@ namespace
 {
 constexpr uint32_t kRotationVectorIntervalUs = 10000;   // 100 Hz
 constexpr uint32_t kCalibratedSensorIntervalUs = 20000;  // 50 Hz
+constexpr uint32_t kDisconnectTimeoutMs = 500;  // no report for this long -> SENSOR_DISCONNECTED
 }  // namespace
 
 bool ImuDriverBno08x::init()
@@ -17,14 +18,22 @@ bool ImuDriverBno08x::init()
     pinMode(pins::kImuRst, OUTPUT);
     digitalWrite(pins::kImuRst, HIGH);
 
+    last_report_ms_ = millis();
+
     if (!bno_.begin_I2C(BNO08x_I2CADDR_DEFAULT, &Wire, pins::kImuRst))
     {
-        connected_ = false;
         return false;
     }
 
-    connected_ = enableReports();
-    return connected_;
+    return enableReports();
+}
+
+bool ImuDriverBno08x::isConnected() const
+{
+    // Grace period before the first report is covered too: last_report_ms_
+    // is seeded to the init() timestamp, so a chip that never reports at
+    // all still correctly reports disconnected once the timeout elapses.
+    return (millis() - last_report_ms_) < kDisconnectTimeoutMs;
 }
 
 bool ImuDriverBno08x::enableReports()
@@ -41,7 +50,7 @@ bool ImuDriverBno08x::readReport(ImuReport &out)
 {
     if (bno_.wasReset())
     {
-        connected_ = enableReports();
+        enableReports();
     }
 
     sh2_SensorValue_t event;
@@ -49,7 +58,7 @@ bool ImuDriverBno08x::readReport(ImuReport &out)
     {
         return false;
     }
-    connected_ = true;
+    last_report_ms_ = millis();
 
     bool updated = false;
     switch (event.sensorId)

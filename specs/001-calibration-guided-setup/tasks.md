@@ -164,13 +164,13 @@ stale/frozen/invalid and is withheld with a clear reason whenever it can't be tr
 0°/360°, observing serial logs, `GET /api/status`, and the UI — no boat, no specific calibration
 stage's own UI required.
 
-- [ ] T077 [US6] Unit tests in `test/native/test_heading/test_wraparound_e2e.cpp`: the full pipeline (T023) stays continuous and correctly normalized to `[0°, 360°)` with no jump or sign error crossing 0°/360°, using known input vectors.
-- [ ] T078 [US6] Wire `HeadingReading.reason_if_invalid` into `GET /api/status.heading.reason_if_invalid` and the `status`/`calibration_progress` WebSocket payloads, and surface it as plain-language text on the Dashboard and readiness summary (FR-041).
-- [ ] T079 [US6] On-target Unity test in `test/esp32s3/test_imu/test_disconnect_no_repeat.cpp`: disconnect the BNO08x mid-run, assert `[IMU] disconnected` then `valid=0 reason=SENSOR_DISCONNECTED` appear and no further `[N2K] tx pgn=127250 ok` lines are emitted.
-- [ ] T080 [US6] Implement `tools/hil/quality_gate_check.py`: force low sensor accuracy (debug hook or operator-guided), assert zero `[N2K] tx pgn=127250 ok` and at least one `[N2K] tx pgn=127250 skipped reason=quality_gate` line while the condition holds (SC-007).
-- [ ] T081 [US6] Implement `tools/hil/boot_restore_check.py`: power-cycle a device with a saved Stage A profile, assert `[IMU] valid=1 ...` appears within 10 s of `[SYS] boot ...` (SC-006).
-- [ ] T082 [US6] Unit tests in `test/native/test_heading/test_smoothing_bounds.cpp` asserting stationary peak-to-peak noise stays within the SC-003 bound over a 30 s synthetic stationary trace.
-- [ ] T083 [US6] Unit test in `test/native/test_heading/test_single_source.cpp` asserting `GET /api/status.heading` and the value `N2kService` transmits both read the same published `HeadingReading` snapshot for a given pipeline tick (FR-042).
+- [X] T077 [US6] Unit tests in `test/native/test_heading/test_wraparound_e2e.cpp`: the full pipeline (T023) stays continuous and correctly normalized to `[0°, 360°)` with no jump or sign error crossing 0°/360°, using known input vectors.
+- [X] T078 [US6] Wire `HeadingReading.reason_if_invalid` into `GET /api/status.heading.reason_if_invalid` and the `status`/`calibration_progress` WebSocket payloads, and surface it as plain-language text on the Dashboard and readiness summary (FR-041).
+- [X] T079 [US6] On-target Unity test in `test/esp32s3/test_imu/test_disconnect_no_repeat.cpp`: disconnect the BNO08x mid-run, assert `[IMU] disconnected` then `valid=0 reason=SENSOR_DISCONNECTED` appear and no further `[N2K] tx pgn=127250 ok` lines are emitted.
+- [X] T080 [US6] Implement `tools/hil/quality_gate_check.py`: force low sensor accuracy (debug hook or operator-guided), assert zero `[N2K] tx pgn=127250 ok` and at least one `[N2K] tx pgn=127250 skipped reason=quality_gate` line while the condition holds (SC-007).
+- [X] T081 [US6] Implement `tools/hil/boot_restore_check.py`: power-cycle a device with a saved Stage A profile, assert `[IMU] valid=1 ...` appears within 10 s of `[SYS] boot ...` (SC-006).
+- [X] T082 [US6] Unit tests in `test/native/test_heading/test_smoothing_bounds.cpp` asserting stationary peak-to-peak noise stays within the SC-003 bound over a 30 s synthetic stationary trace.
+- [X] T083 [US6] Unit test in `test/native/test_heading/test_single_source.cpp` asserting `GET /api/status.heading` and the value `N2kService` transmits both read the same published `HeadingReading` snapshot for a given pipeline tick (FR-042).
 
 **Checkpoint**: The Navigation Data Integrity guarantee is independently demonstrated end-to-end via serial logs and status data.
 

@@ -46,6 +46,20 @@ void test_freeze_does_not_apply_when_no_stage_active(void);
 void test_stationary_noise_bounded_over_30s(void);
 void test_turn_tracked_without_excessive_lag(void);
 
+// test_wraparound_e2e.cpp
+void test_wraparound_from_below(void);
+void test_wraparound_via_mounting_offset_push_past_360(void);
+void test_wraparound_via_mounting_offset_pull_below_zero(void);
+void test_continuity_stepping_through_the_boundary(void);
+void test_exactly_zero_and_exactly_360_both_normalize_to_zero(void);
+
+// test_smoothing_bounds.cpp
+void test_stationary_noise_bounded_straddling_the_wrap_boundary(void);
+
+// test_single_source.cpp
+void test_two_independent_readers_of_the_same_published_value_see_identical_fields(void);
+void test_computation_is_deterministic_for_the_same_input(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -86,6 +100,17 @@ int main(int argc, char **argv)
 
     RUN_TEST(test_stationary_noise_bounded_over_30s);
     RUN_TEST(test_turn_tracked_without_excessive_lag);
+
+    RUN_TEST(test_wraparound_from_below);
+    RUN_TEST(test_wraparound_via_mounting_offset_push_past_360);
+    RUN_TEST(test_wraparound_via_mounting_offset_pull_below_zero);
+    RUN_TEST(test_continuity_stepping_through_the_boundary);
+    RUN_TEST(test_exactly_zero_and_exactly_360_both_normalize_to_zero);
+
+    RUN_TEST(test_stationary_noise_bounded_straddling_the_wrap_boundary);
+
+    RUN_TEST(test_two_independent_readers_of_the_same_published_value_see_identical_fields);
+    RUN_TEST(test_computation_is_deterministic_for_the_same_input);
 
     return UNITY_END();
 }

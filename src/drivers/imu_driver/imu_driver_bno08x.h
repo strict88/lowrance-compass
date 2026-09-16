@@ -18,7 +18,14 @@ public:
     void setCalibrationConfig(bool enable_mag, bool enable_accel, bool enable_gyro) override;
     bool saveDcd() override;
     bool tare() override;
-    bool isConnected() const override { return connected_; }
+
+    // True once a report has ever arrived and one has arrived within the
+    // last kDisconnectTimeoutMs; a wire disconnect (or a chip that stops
+    // responding for any other reason) presents as reports simply stopping,
+    // not as any single I2C call returning a distinguishable error, so
+    // "connected" is derived from report recency rather than the last
+    // transaction's own return code.
+    bool isConnected() const override;
 
     // Hard resets the sensor via RST (pin_config.h) and re-initializes it.
     // Called by ImuTask after repeated comms failures.
@@ -29,5 +36,5 @@ private:
 
     Adafruit_BNO08x bno_;
     ImuReport latest_{};
-    bool connected_ = false;
+    uint32_t last_report_ms_ = 0;
 };
