@@ -17,5 +17,5 @@
 namespace app_task
 {
 void start(CalibrationService &calibration_service, N2kService &n2k_service, ImuDriver &imu_driver,
-           KeyValueStore &stage_a_store, Clock &clock);
+           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, Clock &clock);
 }

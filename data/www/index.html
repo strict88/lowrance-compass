@@ -103,12 +103,59 @@
     </div>
   </section>
 
-  <section class="cal-card cal-card--placeholder">
+  <section id="stage-b-card" class="cal-card">
     <div class="cal-card__header">
       <h2>Stage B: Installation alignment</h2>
       <span id="stage-b-status-pill" class="status-pill status-pill--not-done">Not done</span>
     </div>
-    <p class="placeholder">Available once the boat installation alignment guide is implemented.</p>
+
+    <div id="stage-b-guide">
+      <p id="stage-b-what-why" class="cal-what-why"></p>
+      <div class="cal-block">
+        <h3>Before you start</h3>
+        <ul id="stage-b-before-list" class="cal-checklist"></ul>
+      </div>
+      <p id="stage-b-duration" class="cal-duration"></p>
+    </div>
+
+    <div id="stage-b-level-step" class="cal-progress" hidden>
+      <p>With the boat at rest, tap Set level and hold still.</p>
+      <button id="stage-b-level-btn" class="btn btn--primary">Set level</button>
+    </div>
+
+    <div id="stage-b-method-step" class="cal-progress" hidden>
+      <p>Level captured. Choose a bearing method:</p>
+      <div class="cal-actions">
+        <button id="stage-b-known-bearing-btn" class="btn btn--secondary">Known bearing</button>
+        <button id="stage-b-gps-course-btn" class="btn btn--secondary">GPS course</button>
+      </div>
+    </div>
+
+    <div id="stage-b-bearing-entry" class="cal-progress" hidden>
+      <label for="stage-b-bearing-input">True bearing of the bow (deg)</label>
+      <input id="stage-b-bearing-input" type="number" min="0" max="359.9" step="0.1">
+      <button id="stage-b-bearing-submit-btn" class="btn btn--primary">Compute offset</button>
+    </div>
+
+    <div id="stage-b-gps-waiting" class="cal-progress" hidden>
+      <p id="stage-b-waiting-text">Waiting for a steady course at speed...</p>
+    </div>
+
+    <div id="stage-b-preview" class="cal-progress" hidden>
+      <p>Preview: heading will change by <strong id="stage-b-preview-value">--</strong> deg once accepted.</p>
+      <div class="cal-actions">
+        <button id="stage-b-accept-btn" class="btn btn--primary">Accept</button>
+        <button id="stage-b-discard-btn" class="btn btn--secondary">Discard</button>
+      </div>
+    </div>
+
+    <div id="stage-b-result" class="cal-result" hidden></div>
+
+    <div class="cal-actions">
+      <button id="stage-b-start-btn" class="btn btn--primary">Start</button>
+      <button id="stage-b-cancel-btn" class="btn btn--secondary" hidden>Cancel</button>
+      <button id="stage-b-recalibrate-btn" class="btn btn--secondary" hidden>Recalibrate</button>
+    </div>
   </section>
 
   <section class="cal-card cal-card--placeholder">

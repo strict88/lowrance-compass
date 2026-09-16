@@ -32,6 +32,7 @@ TwaiNodeBus g_can_bus;
 N2kService g_n2k_service(g_can_bus, g_clock, kEnableSelfTest);
 CalibrationService g_calibration_service(g_clock);
 NvsKeyValueStore g_stage_a_store("cal_a");
+NvsKeyValueStore g_stage_b_store("cal_b");
 
 const char *resetReasonName()
 {
@@ -77,7 +78,7 @@ void setup()
 
     imu_task::start(g_imu_driver);
     n2k_task::start(g_n2k_service);
-    app_task::start(g_calibration_service, g_n2k_service, g_imu_driver, g_stage_a_store, g_clock);
+    app_task::start(g_calibration_service, g_n2k_service, g_imu_driver, g_stage_a_store, g_stage_b_store, g_clock);
 
     diag_log::logBoot(kFirmwareVersion, resetReasonName(), ESP.getFreeHeap());
 }

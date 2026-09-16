@@ -193,12 +193,24 @@ void N2kService::handleIncoming(const tN2kMsg &msg)
         {
             has_cog_sog_ = true;
             last_rx_cog_sog_ms_ = now_ms;
-            diag_log::Line("N2K")
-                .token("rx")
-                .kv("pgn", 129026L)
-                .kv("sog", static_cast<double>(fields.sog_m_s))
-                .kv("cog", static_cast<double>(fields.cog_rad * kRadToDeg))
-                .emit();
+            if (fields.has_sog)
+            {
+                last_sog_m_s_ = fields.sog_m_s;
+            }
+            if (fields.has_cog)
+            {
+                last_cog_rad_ = fields.cog_rad;
+            }
+            if (now_ms - last_log_129026_ms_ >= 1000)
+            {
+                last_log_129026_ms_ = now_ms;
+                diag_log::Line("N2K")
+                    .token("rx")
+                    .kv("pgn", 129026L)
+                    .kv("sog", static_cast<double>(fields.sog_m_s))
+                    .kv("cog", static_cast<double>(fields.cog_rad * kRadToDeg))
+                    .emit();
+            }
         }
     }
     else if (msg.PGN == 127258UL)

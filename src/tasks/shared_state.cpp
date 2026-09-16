@@ -19,6 +19,12 @@ RawImuSample g_raw_sample;
 SemaphoreHandle_t g_stage_a_status_mutex = nullptr;
 StageAStatusSnapshot g_stage_a_status;
 
+SemaphoreHandle_t g_debug_gps_mutex = nullptr;
+DebugGpsInject g_debug_gps_inject;
+
+SemaphoreHandle_t g_stage_b_status_mutex = nullptr;
+StageBStatusSnapshot g_stage_b_status;
+
 QueueHandle_t g_app_command_queue = nullptr;
 }  // namespace
 
@@ -28,6 +34,8 @@ void init()
     g_correction_inputs_mutex = xSemaphoreCreateMutex();
     g_raw_sample_mutex = xSemaphoreCreateMutex();
     g_stage_a_status_mutex = xSemaphoreCreateMutex();
+    g_debug_gps_mutex = xSemaphoreCreateMutex();
+    g_stage_b_status_mutex = xSemaphoreCreateMutex();
     g_app_command_queue = xQueueCreate(kAppCommandQueueDepth, sizeof(AppCommand));
 }
 
@@ -88,6 +96,36 @@ StageAStatusSnapshot getStageAStatus()
     xSemaphoreTake(g_stage_a_status_mutex, portMAX_DELAY);
     StageAStatusSnapshot copy = g_stage_a_status;
     xSemaphoreGive(g_stage_a_status_mutex);
+    return copy;
+}
+
+void setDebugGpsInject(const DebugGpsInject &inject)
+{
+    xSemaphoreTake(g_debug_gps_mutex, portMAX_DELAY);
+    g_debug_gps_inject = inject;
+    xSemaphoreGive(g_debug_gps_mutex);
+}
+
+DebugGpsInject getDebugGpsInject()
+{
+    xSemaphoreTake(g_debug_gps_mutex, portMAX_DELAY);
+    DebugGpsInject copy = g_debug_gps_inject;
+    xSemaphoreGive(g_debug_gps_mutex);
+    return copy;
+}
+
+void publishStageBStatus(const StageBStatusSnapshot &status)
+{
+    xSemaphoreTake(g_stage_b_status_mutex, portMAX_DELAY);
+    g_stage_b_status = status;
+    xSemaphoreGive(g_stage_b_status_mutex);
+}
+
+StageBStatusSnapshot getStageBStatus()
+{
+    xSemaphoreTake(g_stage_b_status_mutex, portMAX_DELAY);
+    StageBStatusSnapshot copy = g_stage_b_status;
+    xSemaphoreGive(g_stage_b_status_mutex);
     return copy;
 }
 

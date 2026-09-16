@@ -36,6 +36,8 @@ public:
     bool variationSourcePresent() const;
     bool hasBusVariation() const { return has_bus_variation_; }
     float busVariationRad() const { return bus_variation_rad_; }
+    float lastSogMS() const { return last_sog_m_s_; }
+    float lastCogRad() const { return last_cog_rad_; }
 
 private:
     class IncomingMsgHandler : public tNMEA2000::tMsgHandler
@@ -67,7 +69,10 @@ private:
     CanBusState last_logged_bus_state_ = CanBusState::kRunning;
 
     uint32_t last_rx_cog_sog_ms_ = 0;
+    uint32_t last_log_129026_ms_ = 0;
     bool has_cog_sog_ = false;
+    float last_sog_m_s_ = 0.0f;
+    float last_cog_rad_ = 0.0f;
 
     uint32_t last_rx_variation_ms_ = 0;
     bool has_bus_variation_ = false;

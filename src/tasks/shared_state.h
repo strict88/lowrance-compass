@@ -104,6 +104,7 @@ enum class AppCommandType
     kCalResetB,
     kCalResetC,
     kCalBLevel,
+    kCalBChooseGps,
     kCalBBearing,
     kCalCManualPoint,
     kSettingsSave,
@@ -132,5 +133,45 @@ struct AppCommand
 
 bool postAppCommand(const AppCommand &cmd, uint32_t timeout_ms);
 bool receiveAppCommand(AppCommand &out, uint32_t timeout_ms);
+
+// Bench-only synthetic GPS input for exercising Stage B's GPS-course method
+// and Stage C's swing without a real GPS source on the bus (quickstart.md
+// section 6). Only reachable when the firmware is built with
+// -D DEBUG_GPS_INJECT=1 (never in a release build, so it can never be
+// reachable on a boat) -- web_api.cpp only registers the route under that
+// same guard.
+struct DebugGpsInject
+{
+    bool active = false;
+    float sog_m_s = 0.0f;
+    float cog_rad = 0.0f;
+    float variation_rad = 0.0f;
+};
+
+void setDebugGpsInject(const DebugGpsInject &inject);
+DebugGpsInject getDebugGpsInject();
+
+// A web_api-facing snapshot of Stage B's persisted + live status
+// (contracts/rest-api.md's stages.b / session.progress.b shapes).
+struct StageBStatusSnapshot
+{
+    bool persisted_done = false;
+    float saved_offset_deg = 0.0f;
+    bool saved_method_is_gps = false;
+    char saved_at_iso8601[32] = {0};
+
+    bool session_active = false;
+    bool level_set = false;
+    bool awaiting_method_choice = false;
+    bool awaiting_bearing_entry = false;
+    bool awaiting_gps_alignment = false;
+    bool waiting_speed_too_low = false;
+    bool waiting_course_not_steady = false;
+    bool has_preview_offset = false;
+    float preview_offset_deg = 0.0f;
+};
+
+void publishStageBStatus(const StageBStatusSnapshot &status);
+StageBStatusSnapshot getStageBStatus();
 
 }  // namespace shared_state

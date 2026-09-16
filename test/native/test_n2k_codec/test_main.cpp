@@ -25,6 +25,13 @@ void test_sent_frame_encodes_pgn_127250_and_heading(void);
 void test_can_id_pdu2_broadcast_formula(void);
 void test_no_frame_sent_when_can_bus_rejects_send(void);
 
+// test_variation_source.cpp
+void test_bus_variation_preferred_when_fresh(void);
+void test_manual_used_when_bus_never_received(void);
+void test_manual_used_when_bus_value_is_stale(void);
+void test_bus_value_exactly_at_max_age_still_counts_as_fresh(void);
+void test_neither_available_fails(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -47,6 +54,12 @@ int main(int argc, char **argv)
     RUN_TEST(test_sent_frame_encodes_pgn_127250_and_heading);
     RUN_TEST(test_can_id_pdu2_broadcast_formula);
     RUN_TEST(test_no_frame_sent_when_can_bus_rejects_send);
+
+    RUN_TEST(test_bus_variation_preferred_when_fresh);
+    RUN_TEST(test_manual_used_when_bus_never_received);
+    RUN_TEST(test_manual_used_when_bus_value_is_stale);
+    RUN_TEST(test_bus_value_exactly_at_max_age_still_counts_as_fresh);
+    RUN_TEST(test_neither_available_fails);
 
     return UNITY_END();
 }

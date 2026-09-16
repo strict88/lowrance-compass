@@ -20,6 +20,29 @@
   var stageBPillEl = document.getElementById("stage-b-status-pill");
   var stageCPillEl = document.getElementById("stage-c-status-pill");
 
+  var stageBWhatWhyEl = document.getElementById("stage-b-what-why");
+  var stageBBeforeListEl = document.getElementById("stage-b-before-list");
+  var stageBDurationEl = document.getElementById("stage-b-duration");
+  var stageBGuideEl = document.getElementById("stage-b-guide");
+  var stageBLevelStepEl = document.getElementById("stage-b-level-step");
+  var stageBLevelBtn = document.getElementById("stage-b-level-btn");
+  var stageBMethodStepEl = document.getElementById("stage-b-method-step");
+  var stageBKnownBearingBtn = document.getElementById("stage-b-known-bearing-btn");
+  var stageBGpsCourseBtn = document.getElementById("stage-b-gps-course-btn");
+  var stageBBearingEntryEl = document.getElementById("stage-b-bearing-entry");
+  var stageBBearingInput = document.getElementById("stage-b-bearing-input");
+  var stageBBearingSubmitBtn = document.getElementById("stage-b-bearing-submit-btn");
+  var stageBGpsWaitingEl = document.getElementById("stage-b-gps-waiting");
+  var stageBWaitingTextEl = document.getElementById("stage-b-waiting-text");
+  var stageBPreviewEl = document.getElementById("stage-b-preview");
+  var stageBPreviewValueEl = document.getElementById("stage-b-preview-value");
+  var stageBAcceptBtn = document.getElementById("stage-b-accept-btn");
+  var stageBDiscardBtn = document.getElementById("stage-b-discard-btn");
+  var stageBResultEl = document.getElementById("stage-b-result");
+  var stageBStartBtn = document.getElementById("stage-b-start-btn");
+  var stageBCancelBtn = document.getElementById("stage-b-cancel-btn");
+  var stageBRecalBtn = document.getElementById("stage-b-recalibrate-btn");
+
   var kPositionLabels = {
     POS_X: "+X",
     NEG_X: "-X",
@@ -95,6 +118,20 @@
     });
 
     durationEl.textContent = a.duration_estimate ? "Estimated time: " + a.duration_estimate : "";
+
+    renderStageBGuide(guide.stages && guide.stages.b);
+  }
+
+  function renderStageBGuide(b) {
+    if (!b) return;
+    stageBWhatWhyEl.textContent = b.what_and_why || "";
+    stageBBeforeListEl.innerHTML = "";
+    (b.before_you_start || []).forEach(function (item) {
+      var li = document.createElement("li");
+      li.textContent = item;
+      stageBBeforeListEl.appendChild(li);
+    });
+    stageBDurationEl.textContent = b.duration_estimate ? "Estimated time: " + b.duration_estimate : "";
   }
 
   function setStatusPill(text, variant) {
@@ -103,17 +140,18 @@
   }
 
   function render(status) {
-    var stageA = status.stages && status.stages.a;
+    var stages = status.stages || {};
+    var stageA = stages.a;
     var session = status.session || {};
-    var active = session.active_stage === "A";
+    var activeA = session.active_stage === "A";
 
-    guideEl.hidden = active;
-    progressEl.hidden = !active;
-    startBtn.hidden = active || (stageA && stageA.state === "DONE");
-    recalBtn.hidden = active || !(stageA && stageA.state === "DONE");
-    cancelBtn.hidden = !active;
+    guideEl.hidden = activeA;
+    progressEl.hidden = !activeA;
+    startBtn.hidden = activeA || (stageA && stageA.state === "DONE");
+    recalBtn.hidden = activeA || !(stageA && stageA.state === "DONE");
+    cancelBtn.hidden = !activeA;
 
-    if (active) {
+    if (activeA) {
       setStatusPill("In progress", "in-progress");
       var progress = session.progress || {};
       renderQualityDots(qualityMagEl, progress.mag_acc || 0);
@@ -128,8 +166,61 @@
       setStatusPill("Not done", "not-done");
     }
 
-    updatePlaceholderPill(stageBPillEl, stages.b);
+    renderStageB(status);
     updatePlaceholderPill(stageCPillEl, stages.c);
+  }
+
+  function renderStageB(status) {
+    var stages = status.stages || {};
+    var stageB = stages.b;
+    var session = status.session || {};
+    var activeB = session.active_stage === "B";
+    var progress = session.progress || {};
+
+    stageBGuideEl.hidden = activeB;
+    stageBStartBtn.hidden = activeB || (stageB && stageB.state === "DONE");
+    stageBRecalBtn.hidden = activeB || !(stageB && stageB.state === "DONE");
+    stageBCancelBtn.hidden = !activeB;
+
+    stageBLevelStepEl.hidden = true;
+    stageBMethodStepEl.hidden = true;
+    stageBBearingEntryEl.hidden = true;
+    stageBGpsWaitingEl.hidden = true;
+    stageBPreviewEl.hidden = true;
+
+    if (activeB) {
+      setPill(stageBPillEl, "In progress", "in-progress");
+
+      if (progress.preview_offset_deg !== null && progress.preview_offset_deg !== undefined) {
+        stageBPreviewEl.hidden = false;
+        stageBPreviewValueEl.textContent = Number(progress.preview_offset_deg).toFixed(1);
+      } else if (progress.awaiting_gps_alignment) {
+        stageBGpsWaitingEl.hidden = false;
+        if (progress.waiting_reason === "SPEED_TOO_LOW") {
+          stageBWaitingTextEl.textContent = "Waiting for boat speed to come up...";
+        } else if (progress.waiting_reason === "COURSE_NOT_STEADY") {
+          stageBWaitingTextEl.textContent = "Waiting for a steadier course...";
+        } else {
+          stageBWaitingTextEl.textContent = "Gathering course samples...";
+        }
+      } else if (progress.awaiting_bearing_entry) {
+        stageBBearingEntryEl.hidden = false;
+      } else if (progress.awaiting_method_choice) {
+        stageBMethodStepEl.hidden = false;
+      } else if (!progress.level_set) {
+        stageBLevelStepEl.hidden = false;
+      }
+    } else if (stageB && stageB.state === "DONE") {
+      var savedAt = stageB.saved_at ? new Date(stageB.saved_at).toLocaleDateString() : "date unavailable";
+      setPill(stageBPillEl, "Done · " + savedAt, "done");
+    } else {
+      setPill(stageBPillEl, "Not done", "not-done");
+    }
+  }
+
+  function setPill(pillEl, text, variant) {
+    pillEl.textContent = text;
+    pillEl.className = "status-pill status-pill--" + variant;
   }
 
   function updatePlaceholderPill(pillEl, stageStatus) {
@@ -140,29 +231,32 @@
   }
 
   function showResult(msg) {
-    if (msg.stage !== "A") return;
+    if (msg.stage !== "A" && msg.stage !== "B") return;
+    var label = msg.stage === "A" ? "Stage A calibration" : "Installation alignment";
     var text;
     switch (msg.outcome) {
       case "SAVED":
-        text = "Saved! Stage A calibration completed successfully.";
+        text = "Saved! " + label + " completed successfully.";
         break;
       case "TIMED_OUT":
-        text = "Timed out before reaching full accuracy. " + (msg.reason || "") + " The previous calibration (if any) is unchanged.";
+        text = "Timed out before reaching full accuracy. " + (msg.reason || "") + " The previous result (if any) is unchanged.";
         break;
       case "REJECTED":
-        text = "Calibration was not saved. " + (msg.reason || "");
+        text = label + " was not saved. " + (msg.reason || "");
         break;
       case "CANCELLED":
-        text = "Cancelled. The previous calibration (if any) is unchanged.";
+        text = (msg.reason || "Cancelled") + ". The previous result (if any) is unchanged.";
         break;
       default:
         text = "";
     }
-    resultEl.textContent = text;
-    resultEl.className = "cal-result cal-result--" + msg.outcome.toLowerCase();
-    resultEl.hidden = false;
+
+    var el = msg.stage === "A" ? resultEl : stageBResultEl;
+    el.textContent = text;
+    el.className = "cal-result cal-result--" + msg.outcome.toLowerCase();
+    el.hidden = false;
     setTimeout(function () {
-      resultEl.hidden = true;
+      el.hidden = true;
     }, 8000);
   }
 
@@ -186,6 +280,37 @@
   });
   recalBtn.addEventListener("click", function () {
     postJson("/api/calibration/a/start").catch(function () {});
+  });
+
+  stageBStartBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/start").catch(function () {});
+  });
+  stageBRecalBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/start").catch(function () {});
+  });
+  stageBCancelBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/cancel").catch(function () {});
+  });
+  stageBLevelBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/level").catch(function () {});
+  });
+  stageBKnownBearingBtn.addEventListener("click", function () {
+    stageBMethodStepEl.hidden = true;
+    stageBBearingEntryEl.hidden = false;
+  });
+  stageBGpsCourseBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/gps-course").catch(function () {});
+  });
+  stageBBearingSubmitBtn.addEventListener("click", function () {
+    var bearingDeg = parseFloat(stageBBearingInput.value);
+    if (isNaN(bearingDeg)) return;
+    postJson("/api/calibration/b/bearing", { bearing_deg: bearingDeg }).catch(function () {});
+  });
+  stageBAcceptBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/apply").catch(function () {});
+  });
+  stageBDiscardBtn.addEventListener("click", function () {
+    postJson("/api/calibration/b/discard").catch(function () {});
   });
 
   window.CompassBus.on("status", render);

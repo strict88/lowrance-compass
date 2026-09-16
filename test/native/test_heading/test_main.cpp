@@ -60,6 +60,11 @@ void test_stationary_noise_bounded_straddling_the_wrap_boundary(void);
 void test_two_independent_readers_of_the_same_published_value_see_identical_fields(void);
 void test_computation_is_deterministic_for_the_same_input(void);
 
+// test_pipeline_with_stage_b.cpp
+void test_absent_installation_alignment_yields_identity_zero(void);
+void test_present_installation_alignment_carries_through_to_the_pipeline(void);
+void test_nonidentity_level_reference_is_applied(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -111,6 +116,10 @@ int main(int argc, char **argv)
 
     RUN_TEST(test_two_independent_readers_of_the_same_published_value_see_identical_fields);
     RUN_TEST(test_computation_is_deterministic_for_the_same_input);
+
+    RUN_TEST(test_absent_installation_alignment_yields_identity_zero);
+    RUN_TEST(test_present_installation_alignment_carries_through_to_the_pipeline);
+    RUN_TEST(test_nonidentity_level_reference_is_applied);
 
     return UNITY_END();
 }

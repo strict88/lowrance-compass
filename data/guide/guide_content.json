@@ -32,6 +32,33 @@
         "Accuracy won't reach High: move further from magnetic interference (speakers, metal furniture, other electronics) and repeat the six positions and rotation steps.",
         "Timed out: the previous saved calibration (if any) is unaffected -- just start over when ready."
       ]
+    },
+    "b": {
+      "what_and_why": "Installation alignment tells the compass how it's actually mounted on the boat: whether it's perfectly level, and which way its own \"forward\" points relative to the boat's true bow. Without this, a perfectly-calibrated sensor still reports the wrong heading if it's mounted tilted or rotated from dead-ahead.",
+      "before_you_start": [
+        "The compass must be permanently mounted in its final position -- this stage measures the actual installation, not a bench setup.",
+        "The boat should be at rest on calm water for the level step.",
+        "Know how you'll determine the boat's true bow bearing: either a known landmark/chart bearing, or by holding a steady course on GPS."
+      ],
+      "steps": [
+        {
+          "title": "Set level",
+          "detail": "With the boat at rest and calm, tap Set level and hold still for a few seconds while the compass captures its mounted attitude.",
+          "illustration_svg_id": "stage_b_step1"
+        },
+        {
+          "title": "Choose a bearing method",
+          "detail": "Pick Known bearing if you can sight or chart the boat's true bow direction right now, or GPS course if you'd rather hold a steady course underway and let the chartplotter's GPS provide it.",
+          "illustration_svg_id": "stage_b_step2"
+        }
+      ],
+      "duration_estimate": "About 5 minutes at the dock, or a few minutes underway for the GPS method",
+      "success_looks_like": "The app shows a preview of how the displayed heading will change, and after you accept it, the mounting offset is saved.",
+      "if_it_fails": [
+        "Set level won't complete: the boat is rocking too much -- wait for calmer water.",
+        "GPS course method waiting: it needs boat speed above a minimum and a steady course -- hold a straight line at a reasonable cruising speed.",
+        "Wrong-looking offset: discard and redo Set level, making sure the boat was genuinely at rest."
+      ]
     }
   }
 }

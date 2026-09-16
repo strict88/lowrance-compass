@@ -61,6 +61,19 @@ void test_reset_without_confirm_leaves_record_unchanged(void);
 void test_reset_with_confirm_clears_the_record(void);
 void test_reset_only_clears_the_targeted_stage(void);
 
+// test_stage_b_bearing.cpp
+void test_bearing_offset_zero_when_magnetic_bearing_matches_heading(void);
+void test_bearing_offset_matches_hand_computed_value(void);
+void test_bearing_offset_wraps_correctly_across_zero(void);
+void test_bearing_offset_stays_within_plus_minus_180(void);
+void test_level_reference_quat_is_captured_before_bearing_entry(void);
+
+// test_stage_b_gps.cpp
+void test_gps_sample_below_min_speed_is_rejected(void);
+void test_steady_course_at_speed_computes_offset(void);
+void test_unsteady_course_reports_waiting_reason(void);
+void test_partial_window_does_not_yet_decide(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -112,6 +125,17 @@ int main(int argc, char **argv)
     RUN_TEST(test_reset_without_confirm_leaves_record_unchanged);
     RUN_TEST(test_reset_with_confirm_clears_the_record);
     RUN_TEST(test_reset_only_clears_the_targeted_stage);
+
+    RUN_TEST(test_bearing_offset_zero_when_magnetic_bearing_matches_heading);
+    RUN_TEST(test_bearing_offset_matches_hand_computed_value);
+    RUN_TEST(test_bearing_offset_wraps_correctly_across_zero);
+    RUN_TEST(test_bearing_offset_stays_within_plus_minus_180);
+    RUN_TEST(test_level_reference_quat_is_captured_before_bearing_entry);
+
+    RUN_TEST(test_gps_sample_below_min_speed_is_rejected);
+    RUN_TEST(test_steady_course_at_speed_computes_offset);
+    RUN_TEST(test_unsteady_course_reports_waiting_reason);
+    RUN_TEST(test_partial_window_does_not_yet_decide);
 
     return UNITY_END();
 }
