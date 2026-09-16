@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <!-- Stage A illustrations, referenced by guide_content.json's illustration_svg_id
+       via <use href="illustrations/stage_a.svg#<id>">. Each symbol uses a
+       0 0 120 120 viewBox and currentColor strokes so they inherit the
+       page's theme. -->
+
+  <symbol id="stage_a_step1" viewBox="0 0 120 120">
+    <line x1="10" y1="100" x2="110" y2="100" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <rect x="40" y="70" width="40" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="3"/>
+    <circle cx="60" cy="83" r="4" fill="currentColor"/>
+    <path d="M60 40 v20" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <path d="M48 30 a12 12 0 0 1 24 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <symbol id="stage_a_step2" viewBox="0 0 120 120">
+    <g stroke="currentColor" stroke-width="2.5" fill="none">
+      <rect x="8" y="8" width="30" height="20" rx="3"/>
+      <rect x="45" y="8" width="30" height="20" rx="3"/>
+      <rect x="82" y="8" width="30" height="20" rx="3"/>
+      <rect x="8" y="50" width="30" height="20" rx="3"/>
+      <rect x="45" y="50" width="30" height="20" rx="3"/>
+      <rect x="82" y="50" width="30" height="20" rx="3"/>
+    </g>
+    <text x="60" y="100" text-anchor="middle" font-size="14" fill="currentColor" font-family="sans-serif">1 2 3 4 5 6</text>
+  </symbol>
+
+  <symbol id="stage_a_step3" viewBox="0 0 120 120">
+    <rect x="45" y="50" width="30" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="3"/>
+    <path d="M20 60 C20 25, 100 25, 100 60 C100 95, 20 95, 20 60"
+          fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="6 5"/>
+    <path d="M92 44 l10 -6 l2 11" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>

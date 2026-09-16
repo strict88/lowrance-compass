@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "stages": {
+    "a": {
+      "what_and_why": "Bench sensor calibration teaches the compass's own sensors (magnetometer, accelerometer, and gyroscope) their individual biases and scale, on the bench, before it's mounted on the boat. Every later stage builds on this one, and heading is never transmitted until it's done.",
+      "before_you_start": [
+        "Assemble the compass in its final enclosure with all cables attached -- calibrating a bare board doesn't account for the enclosure's own magnetic footprint.",
+        "Move at least 1 m away from other electronics, speakers, metal tools, and anything magnetic.",
+        "Power the compass and connect to its Wi-Fi network from your phone."
+      ],
+      "steps": [
+        {
+          "title": "Hold still",
+          "detail": "Set the compass down on a stable, non-metallic surface and leave it untouched until the app shows it's detected stillness.",
+          "illustration_svg_id": "stage_a_step1"
+        },
+        {
+          "title": "Six positions",
+          "detail": "Pick the compass up and hold it steady in each of six orientations in turn -- top up, bottom up, and each of the four sides -- for a few seconds each, in any order.",
+          "illustration_svg_id": "stage_a_step2"
+        },
+        {
+          "title": "Slow rotation",
+          "detail": "Slowly rotate the compass through as many different orientations as you can, like tracing a figure-8 in the air, until the coverage indicator fills up.",
+          "illustration_svg_id": "stage_a_step3"
+        }
+      ],
+      "duration_estimate": "About 3 minutes",
+      "success_looks_like": "All three sensor accuracy indicators (magnetometer, accelerometer, gyroscope) reach High, and the app confirms the calibration was saved.",
+      "if_it_fails": [
+        "Stuck on Hold still: set the compass on a firmer, more stable surface -- vibration or hand tremor prevents the stillness check from passing.",
+        "Accuracy won't reach High: move further from magnetic interference (speakers, metal furniture, other electronics) and repeat the six positions and rotation steps.",
+        "Timed out: the previous saved calibration (if any) is unaffected -- just start over when ready."
+      ]
+    }
+  }
+}

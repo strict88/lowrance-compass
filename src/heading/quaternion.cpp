@@ -30,6 +30,13 @@ Quaternion normalizeQuaternion(const Quaternion &q)
     return Quaternion{q.w / mag, q.x / mag, q.y / mag, q.z / mag};
 }
 
+Vec3 rotate(const Quaternion &q, const Vec3 &v)
+{
+    Quaternion vq{0.0f, v.x, v.y, v.z};
+    Quaternion result = multiply(multiply(q, vq), conjugate(q));
+    return Vec3{result.x, result.y, result.z};
+}
+
 EulerAngles toEuler(const Quaternion &q)
 {
     Quaternion n = normalizeQuaternion(q);

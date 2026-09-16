@@ -5,6 +5,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
+#include "guide/guide_content.h"
 #include "n2k_codec/pgn_codec.h"
 #include "tasks/shared_state.h"
 #include "thresholds.h"
@@ -189,6 +190,32 @@ void start(CalibrationService &calibration_service, N2kService &n2k_service, Clo
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         serializeJson(doc, *response);
         request->send(response);
+    });
+
+    g_server.on("/api/guide", HTTP_GET, [](AsyncWebServerRequest *request) {
+        static const char *kGuidePath = "/guide/guide_content.json";
+        File file = LittleFS.open(kGuidePath, "r");
+        if (!file)
+        {
+            request->send(500, "application/json",
+                          "{\"schema\":1,\"error\":{\"code\":\"GUIDE_UNAVAILABLE\",\"message\":\"guide content file "
+                          "missing\"}}");
+            return;
+        }
+
+        String contents = file.readString();
+        file.close();
+
+        JsonDocument doc;
+        if (!guide::parseFromJsonString(contents.c_str(), doc))
+        {
+            request->send(500, "application/json",
+                          "{\"schema\":1,\"error\":{\"code\":\"GUIDE_UNAVAILABLE\",\"message\":\"guide content file is "
+                          "malformed\"}}");
+            return;
+        }
+
+        request->send(LittleFS, kGuidePath, "application/json");
     });
 
     g_server.on("/api/calibration/a/start", HTTP_POST, [](AsyncWebServerRequest *request) {

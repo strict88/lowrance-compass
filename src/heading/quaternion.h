@@ -17,6 +17,18 @@ Quaternion multiply(const Quaternion &a, const Quaternion &b);
 Quaternion conjugate(const Quaternion &q);
 Quaternion normalizeQuaternion(const Quaternion &q);
 
+struct Vec3
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+// Rotates `v` by `q`: q * (0,v) * conjugate(q). If `q` maps body->world,
+// rotate(q, v_body) gives v_world and rotate(conjugate(q), v_world) gives
+// v_body.
+Vec3 rotate(const Quaternion &q, const Vec3 &v);
+
 struct EulerAngles
 {
     float yaw_rad = 0.0f;    // (-pi, pi]
