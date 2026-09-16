@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lowrance Compass</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>Compass</h1>
+  <span id="conn-indicator" class="conn-indicator conn-indicator--down" title="Connecting...">&#9679;</span>
+</header>
+
+<main id="view-dashboard" class="view" data-view="dashboard">
+  <div id="readiness-banner" class="banner banner--warn" hidden></div>
+
+  <div class="heading-display">
+    <div id="heading-value" class="heading-value">--</div>
+    <div class="heading-unit">deg</div>
+  </div>
+  <div id="heading-invalid-reason" class="invalid-reason" hidden></div>
+
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-label">Pitch</div>
+      <div id="pitch-value" class="stat-value">--</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Roll</div>
+      <div id="roll-value" class="stat-value">--</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Rate of turn</div>
+      <div id="rot-value" class="stat-value">--</div>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-label">N2K bus</div>
+      <div id="n2k-state-value" class="stat-value stat-value--small">--</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">N2K address</div>
+      <div id="n2k-address-value" class="stat-value stat-value--small">--</div>
+    </div>
+  </div>
+</main>
+
+<main id="view-calibration" class="view" data-view="calibration" hidden>
+  <p class="placeholder">Calibration guide and per-stage status appear here once Stage A is implemented.</p>
+</main>
+
+<main id="view-settings" class="view" data-view="settings" hidden>
+  <p class="placeholder">Wi-Fi network settings appear here once the Settings tab is implemented.</p>
+</main>
+
+<nav class="tabbar">
+  <button class="tab tab--active" data-view="dashboard">Dashboard</button>
+  <button class="tab" data-view="calibration">Calibration</button>
+  <button class="tab" data-view="settings">Settings</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>

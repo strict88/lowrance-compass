@@ -30,6 +30,10 @@ public:
     // without another node acknowledging (quickstart.md section 5).
     virtual bool init(bool enable_self_test) = 0;
 
+    // Stops and releases the controller; safe to call init() again
+    // afterward.
+    virtual void deinit() = 0;
+
     // Non-blocking transmit; returns false if the frame could not be
     // accepted right now (queue full, bus off, etc.).
     virtual bool send(const CanFrame &frame) = 0;

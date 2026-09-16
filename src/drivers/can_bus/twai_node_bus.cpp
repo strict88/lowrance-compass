@@ -55,6 +55,23 @@ bool TwaiNodeBus::init(bool enable_self_test)
     return true;
 }
 
+void TwaiNodeBus::deinit()
+{
+    if (node_ == nullptr)
+    {
+        return;
+    }
+    twai_node_disable(node_);
+    twai_node_delete(node_);
+    node_ = nullptr;
+
+    if (rx_queue_ != nullptr)
+    {
+        vQueueDelete(rx_queue_);
+        rx_queue_ = nullptr;
+    }
+}
+
 bool TwaiNodeBus::send(const CanFrame &frame)
 {
     twai_frame_t tx = {};

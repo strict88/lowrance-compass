@@ -18,6 +18,8 @@ public:
         return true;
     }
 
+    void deinit() override { initialized_ = false; }
+
     bool send(const CanFrame &frame) override
     {
         if (!send_should_succeed_)

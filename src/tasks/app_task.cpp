@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "services/diag_log.h"
+#include "services/web_api.h"
 #include "tasks/shared_state.h"
 
 namespace app_task
@@ -137,6 +138,7 @@ void handleCommand(CalibrationService &calibration_service, shared_state::AppCom
 struct Context
 {
     CalibrationService *calibration_service;
+    N2kService *n2k_service;
     Clock *clock;
 };
 
@@ -144,6 +146,8 @@ void taskFn(void *param)
 {
     auto *ctx = static_cast<Context *>(param);
     esp_task_wdt_add(nullptr);
+
+    web_api::start(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
 
     for (;;)
     {
@@ -161,14 +165,16 @@ void taskFn(void *param)
         {
             diag_log::Line("CAL").kv("stage", stageName(timed_out)).kv("result", "timeout").emit();
         }
+
+        web_api::broadcastStatusIfDue(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
     }
 }
 
 }  // namespace
 
-void start(CalibrationService &calibration_service, Clock &clock)
+void start(CalibrationService &calibration_service, N2kService &n2k_service, Clock &clock)
 {
-    static Context ctx{&calibration_service, &clock};
+    static Context ctx{&calibration_service, &n2k_service, &clock};
     xTaskCreatePinnedToCore(taskFn, "AppTask", kStackSize, &ctx, kPriority, nullptr, kCoreId);
 }
 

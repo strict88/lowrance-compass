@@ -19,6 +19,7 @@ class TwaiNodeBus : public CanBus
 {
 public:
     bool init(bool enable_self_test) override;
+    void deinit() override;
     bool send(const CanFrame &frame) override;
     bool receive(CanFrame &out) override;
     CanBusState state() const override { return state_; }

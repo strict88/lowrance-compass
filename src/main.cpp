@@ -75,7 +75,7 @@ void setup()
 
     imu_task::start(g_imu_driver);
     n2k_task::start(g_n2k_service);
-    app_task::start(g_calibration_service, g_clock);
+    app_task::start(g_calibration_service, g_n2k_service, g_clock);
 
     diag_log::logBoot(kFirmwareVersion, resetReasonName(), ESP.getFreeHeap());
 }
