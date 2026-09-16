@@ -74,6 +74,37 @@ void test_steady_course_at_speed_computes_offset(void);
 void test_unsteady_course_reports_waiting_reason(void);
 void test_partial_window_does_not_yet_decide(void);
 
+// test_deviation_fit.cpp
+void test_clean_synthetic_data_recovers_known_coefficients(void);
+void test_noisy_synthetic_data_recovers_coefficients_approximately(void);
+void test_fewer_than_five_populated_sectors_fails(void);
+void test_missing_sectors_but_enough_coverage_still_fits(void);
+void test_bad_outlier_sector_skews_less_when_isolated(void);
+
+// test_sample_filter.cpp
+void test_accepted_baseline_sample(void);
+void test_too_slow_is_rejected(void);
+void test_turn_rate_too_fast_is_rejected(void);
+void test_turn_rate_uneven_is_rejected(void);
+void test_stale_reference_is_rejected(void);
+void test_low_accuracy_is_rejected(void);
+void test_mad_outlier_rejection_flags_the_clear_outlier(void);
+void test_mad_outlier_rejection_accepts_all_when_no_spread(void);
+
+// test_stage_c_state_machine.cpp
+void test_full_gps_swing_with_zero_deviation_reaches_result_ready(void);
+void test_swing_stopped_early_is_rejected_incomplete_coverage(void);
+void test_swing_with_large_constant_deviation_is_rejected_deviation_too_high(void);
+void test_apply_and_discard_transitions(void);
+void test_cancel_from_swinging_moves_to_cancelled(void);
+
+// test_stage_c_manual.cpp
+void test_manual_swing_all_eight_points_with_zero_deviation_reaches_result_ready(void);
+void test_manual_point_index_advances_after_each_confirmation(void);
+void test_manual_swing_with_large_deviation_is_rejected_deviation_too_high(void);
+void test_manual_swing_result_ready_can_be_applied(void);
+void test_entering_a_point_outside_awaiting_state_is_a_no_op(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -136,6 +167,33 @@ int main(int argc, char **argv)
     RUN_TEST(test_steady_course_at_speed_computes_offset);
     RUN_TEST(test_unsteady_course_reports_waiting_reason);
     RUN_TEST(test_partial_window_does_not_yet_decide);
+
+    RUN_TEST(test_clean_synthetic_data_recovers_known_coefficients);
+    RUN_TEST(test_noisy_synthetic_data_recovers_coefficients_approximately);
+    RUN_TEST(test_fewer_than_five_populated_sectors_fails);
+    RUN_TEST(test_missing_sectors_but_enough_coverage_still_fits);
+    RUN_TEST(test_bad_outlier_sector_skews_less_when_isolated);
+
+    RUN_TEST(test_accepted_baseline_sample);
+    RUN_TEST(test_too_slow_is_rejected);
+    RUN_TEST(test_turn_rate_too_fast_is_rejected);
+    RUN_TEST(test_turn_rate_uneven_is_rejected);
+    RUN_TEST(test_stale_reference_is_rejected);
+    RUN_TEST(test_low_accuracy_is_rejected);
+    RUN_TEST(test_mad_outlier_rejection_flags_the_clear_outlier);
+    RUN_TEST(test_mad_outlier_rejection_accepts_all_when_no_spread);
+
+    RUN_TEST(test_full_gps_swing_with_zero_deviation_reaches_result_ready);
+    RUN_TEST(test_swing_stopped_early_is_rejected_incomplete_coverage);
+    RUN_TEST(test_swing_with_large_constant_deviation_is_rejected_deviation_too_high);
+    RUN_TEST(test_apply_and_discard_transitions);
+    RUN_TEST(test_cancel_from_swinging_moves_to_cancelled);
+
+    RUN_TEST(test_manual_swing_all_eight_points_with_zero_deviation_reaches_result_ready);
+    RUN_TEST(test_manual_point_index_advances_after_each_confirmation);
+    RUN_TEST(test_manual_swing_with_large_deviation_is_rejected_deviation_too_high);
+    RUN_TEST(test_manual_swing_result_ready_can_be_applied);
+    RUN_TEST(test_entering_a_point_outside_awaiting_state_is_a_no_op);
 
     return UNITY_END();
 }
