@@ -52,13 +52,24 @@ window.CompassBus = (function () {
 
   function renderStatus(status) {
     if (status.heading) {
+      var reason = status.heading.reason_if_invalid;
+      // The degree value is shown whenever the sensor is connected at all
+      // (status.heading.valid) -- low accuracy no longer blanks it out, it
+      // only adds the warning below, so the user always has a heading to
+      // steer by even before/while calibration reaches full accuracy.
       if (status.heading.valid) {
         headingValue.textContent = fmtDeg(status.heading.heading_deg, 0);
-        invalidReason.hidden = true;
       } else {
         headingValue.textContent = "--";
-        invalidReason.textContent = status.heading.reason_if_invalid || "Heading unavailable";
+      }
+      if (!status.heading.valid) {
+        invalidReason.textContent = reason || "Heading unavailable";
         invalidReason.hidden = false;
+      } else if (reason === "SENSOR_ACCURACY_LOW" || reason === "SENSOR_NOT_CALIBRATED") {
+        invalidReason.textContent = "Low sensor accuracy -- heading shown may not be fully reliable.";
+        invalidReason.hidden = false;
+      } else {
+        invalidReason.hidden = true;
       }
       pitchValue.textContent = fmtDeg(status.heading.pitch_deg) + "°";
       rollValue.textContent = fmtDeg(status.heading.roll_deg) + "°";
@@ -88,20 +99,24 @@ window.CompassBus = (function () {
     readinessBanner.hidden = false;
     var stages = status.stages || {};
     var stageADone = stages.a && stages.a.state === "DONE";
+    var reason = status.heading && status.heading.reason_if_invalid;
 
     if (!stageADone) {
       readinessBanner.textContent =
-        status.heading && !status.heading.valid && status.heading.reason_if_invalid === "SENSOR_ACCURACY_LOW"
-          ? "Calibration in progress -- heading is withheld until sensor accuracy reaches High on all three sensors."
+        reason === "SENSOR_ACCURACY_LOW"
+          ? "Calibration in progress -- heading shown is a low-confidence estimate until sensor accuracy " +
+            "reaches High on all three sensors."
           : "Welcome! This compass hasn't been calibrated yet. Open the Calibration tab to complete Stage A " +
             "(bench sensor calibration) before it can transmit a trustworthy heading.";
       return;
     }
 
-    if (status.heading && !status.heading.valid) {
+    if (reason) {
       readinessBanner.textContent =
-        "Heading is temporarily withheld (" + (status.heading.reason_if_invalid || "unknown reason") +
-        ") even though Stage A was previously completed.";
+        reason === "SENSOR_DISCONNECTED"
+          ? "Heading is temporarily unavailable (sensor disconnected)."
+          : "Sensor accuracy is currently low (" + reason + ") even though Stage A was previously completed -- " +
+            "the heading shown may not be fully reliable.";
       return;
     }
 

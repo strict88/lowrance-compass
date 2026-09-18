@@ -29,8 +29,12 @@ QualityGateResult evaluate(bool sensor_connected, const SensorAccuracySnapshot &
         return {true, InvalidReason::kNone};
     }
 
+    // Low accuracy is surfaced as a warning (`reason`), not a transmit/display
+    // block: the pipeline still has a genuine heading number to give, just
+    // one that hasn't reached the FR-014 accuracy bar yet. Only a
+    // disconnected sensor (handled above) has no data at all to give.
     InvalidReason reason = saved_profile.exists ? InvalidReason::kSensorAccuracyLow : InvalidReason::kSensorNotCalibrated;
-    return {false, reason};
+    return {true, reason};
 }
 
 }  // namespace heading

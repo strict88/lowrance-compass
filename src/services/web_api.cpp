@@ -108,7 +108,8 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     readiness_input.stage_a_done = stage_a_status.persisted_done;
     readiness_input.stage_b_done = stage_b_status.persisted_done;
     readiness_input.stage_c_done = stage_c_status.persisted_done;
-    readiness_input.heading_currently_withheld = !reading.valid;
+    readiness_input.heading_currently_withheld = !reading.valid || reading.reason_if_invalid != heading::InvalidReason::kNone;
+
     switch (calibration::deriveReadiness(readiness_input))
     {
         case calibration::Readiness::kReady:

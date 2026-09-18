@@ -402,8 +402,9 @@ observing serial logs, the status data endpoint, and the UI, without needing a b
 - **FR-001**: The Calibration tab MUST show an overall readiness summary derived from the status
   of all three stages (e.g., not calibrated/heading not sent, usable/one or more stages
   recommended, ready to navigate). This summary MUST also reflect, in real time and independently
-  of any stage's persisted status, whenever heading is currently withheld per FR-041 (e.g., due to
-  a transient live accuracy drop), even while the underlying stage still reads "Done".
+  of any stage's persisted status, whenever heading currently has a quality warning per FR-041
+  (e.g., due to a transient live accuracy drop or the sensor being disconnected), even while the
+  underlying stage still reads "Done".
 - **FR-002**: Each stage MUST show its own persisted status as one of: Not done, In progress, Done
   (with saved quality and date), or Needs redo. Needs redo MUST result only from an explicit user
   reset (FR-005); the system MUST NOT automatically change a stage's persisted status because of a
@@ -533,9 +534,13 @@ observing serial logs, the status data endpoint, and the UI, without needing a b
 - **FR-040**: The system MUST produce heading that remains accurate and correctly normalized to
   [0°, 360°) across the full range, including continuity across the north crossing.
 - **FR-041**: Whenever the currently saved calibration's accuracy falls below the FR-014 threshold
-  (magnetometer, accelerometer, and gyroscope all "High"), the system MUST send the NMEA 2000
-  "data not available" value or stop sending the heading PGN, and the UI MUST show why heading is
-  unavailable. While a new Stage A attempt is in progress, the device MUST continue transmitting
+  (magnetometer, accelerometer, and gyroscope all "High"), the system MUST still compute, transmit,
+  and display its best-available heading, but MUST flag it as low-confidence everywhere it is
+  surfaced: the UI MUST show why accuracy is currently low alongside the numeric heading value, and
+  the NMEA 2000/serial diagnostics MUST record the accuracy reason. The system MUST send the NMEA
+  2000 "data not available" value or stop sending the heading PGN — and the UI MUST show heading as
+  unavailable — only when the sensor is disconnected or has stopped reporting entirely (no data
+  exists to give). While a new Stage A attempt is in progress, the device MUST continue transmitting
   heading using the previously saved calibration (not the in-progress attempt) until the new result
   is saved, cancelled, or the attempt times out.
 - **FR-042**: The heading value shown in the UI MUST match the heading value transmitted on the
@@ -596,8 +601,10 @@ observing serial logs, the status data endpoint, and the UI, without needing a b
 - **SC-005**: After Stage C, the remaining heading error on the boat is ≤ 2° across all headings.
 - **SC-006**: The saved calibration is restored and reports usable accuracy within 10 seconds of
   boot.
-- **SC-007**: No heading is sent while calibration quality is below the configured threshold,
-  verifiable from serial logs and status data alone.
+- **SC-007**: No heading is sent while the sensor is disconnected or not reporting; whenever
+  calibration quality is below the configured threshold but the sensor is still reporting, the
+  heading sent/shown is flagged as low-confidence rather than withheld. Both are verifiable from
+  serial logs and status data alone.
 - **SC-008**: An SSID change takes effect within 15 seconds, with no gap in heading output.
 - **SC-009**: The Stage C deviation-fitting algorithm is verified against synthetic swing data with
   known deviation, including noisy, missing-sector, and bad-sample scenarios, without requiring an
