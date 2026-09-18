@@ -1,21 +1,23 @@
 <!--
 Sync Impact Report
-Version change: [none, unfilled scaffold] → 1.0.0
-Rationale: Initial ratification. The prior file contained only unfilled template
-placeholders, so this is treated as the first adopted version, not an amendment.
-Modified principles: n/a (initial adoption)
-Added sections:
-  - Core Principles: I. Navigation Data Integrity, II. NMEA 2000 Compliance,
-    III. Real-Time Isolation, IV. Hardware-in-the-Loop Verification,
-    V. Hardware Abstraction and Configuration, VI. Web UI: Simple, Local, Robust,
-    VII. Reliability and Field Safety
-  - Technical Constraints
-  - Development Workflow
-  - Governance
+Version change: 1.0.0 → 2.0.0
+Rationale: MAJOR — redefinition of a NON-NEGOTIABLE principle's guarantee. Principle I
+previously required the device to withhold the heading PGN (or send "data not available")
+whenever sensor accuracy fell below HEADING_MIN_ACCURACY. Product direction changed: a
+flagged, best-effort heading is now considered more useful to the person steering than
+silence while calibration converges, so low accuracy no longer suppresses transmission or
+display — it is instead required to be flagged everywhere it's surfaced. The disconnected-
+sensor guarantee (no data at all → no heading sent/shown) is unchanged and remains absolute.
+Modified principles:
+  - I. Navigation Data Integrity (NON-NEGOTIABLE) — scope of "MUST withhold" narrowed from
+    "disconnected OR low accuracy" to "disconnected only"; added a MUST-flag requirement
+    for any heading sent/shown below HEADING_MIN_ACCURACY.
+Added sections: none
 Removed sections: none
-Deferred / TODO placeholders: none — all template placeholders resolved.
-Templates requiring follow-up: none checked automatically by this command; dependent
-templates/commands read this constitution at runtime and are not modified here.
+Deferred / TODO placeholders: none.
+Templates requiring follow-up: specs/001-calibration-guided-setup/spec.md FR-041 and
+related contract/data-model docs describe the old suppress-on-low-accuracy behavior and
+should be updated to match (tracked separately from this constitution amendment).
 This report is scratch material for human review; remove it once the amendment is
 reviewed and before relying on the file as the durable governance record.
 -->
@@ -25,18 +27,31 @@ reviewed and before relying on the file as the durable governance record.
 ## Core Principles
 
 ### I. Navigation Data Integrity (NON-NEGOTIABLE)
-The device MUST never send stale, frozen, or invalid heading data. If the sensor fails,
-stops reporting, or reports unusable accuracy, the device MUST stop sending heading PGNs
-or MUST send the NMEA 2000 "data not available" values. It MUST NOT repeat the last known
-value. Every value placed on the bus MUST use correct NMEA 2000 units (radians, rad/s),
-correct ranges (heading normalized to [0, 2π)), and the correct reference (magnetic vs.
-true). The heading pipeline (sensor quaternion → Euler → mounting offset →
-deviation/variation → normalized heading) MUST be deterministic, documented, and covered
-by unit tests with known vectors, including the 0°/360° wraparound.
+The device MUST never send stale, frozen, or fabricated heading data, and MUST NOT repeat
+the last known value. If the sensor is disconnected or stops reporting entirely, the device
+MUST stop sending heading PGNs or MUST send the NMEA 2000 "data not available" values, and
+the UI MUST show heading as unavailable — there is no data to give.
+
+When the sensor is connected and reporting but accuracy is below HEADING_MIN_ACCURACY
+(magnetometer, accelerometer, and gyroscope all "High"), the device MUST still compute and
+transmit its best-available heading rather than withholding it — but that heading MUST be
+flagged as low-confidence everywhere it is surfaced: the UI MUST show an explicit
+low-accuracy/not-yet-calibrated warning alongside the numeric value, and diagnostic/serial
+log lines MUST record the accuracy reason (e.g. `SENSOR_ACCURACY_LOW`,
+`SENSOR_NOT_CALIBRATED`). A low-accuracy heading MUST NEVER be sent or shown unflagged.
+Every value placed on the bus MUST use correct NMEA 2000 units (radians, rad/s), correct
+ranges (heading normalized to [0, 2π)), and the correct reference (magnetic vs. true). The
+heading pipeline (sensor quaternion → Euler → mounting offset → deviation/variation →
+normalized heading) MUST be deterministic, documented, and covered by unit tests with known
+vectors, including the 0°/360° wraparound.
 
 Rationale: A marine compass feeding a chartplotter is a safety-relevant navigation
-instrument. Silently repeating or fabricating heading data is worse than reporting no
-data, because it can mislead a navigator who trusts the display.
+instrument. Silently repeating or fabricating heading data, or presenting a low-confidence
+value as if it were fully trustworthy, is worse than reporting no data, because either can
+mislead a navigator who trusts the display. Total silence during normal low-accuracy
+operation (e.g. while calibration is still converging), however, is not obviously safer
+than a clearly labeled best-effort estimate — so the device gives its best number and lets
+the flag do the warning, rather than giving nothing.
 
 ### II. NMEA 2000 Compliance
 The device MUST behave as a well-mannered NMEA 2000 node: address claim (PGN 60928),
@@ -174,4 +189,4 @@ The ratification date and the last-amended date MUST both be recorded and kept c
 Principles I (Navigation Data Integrity) and IV (Hardware-in-the-Loop Verification) are
 non-negotiable and MUST NOT be waived by a plan.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
+**Version**: 2.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-18

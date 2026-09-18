@@ -29,9 +29,9 @@ void test_identity_corrections_when_stages_not_done(void);
 
 // test_quality_gate.cpp
 void test_all_high_passes(void);
-void test_mag_below_high_fails(void);
-void test_accel_below_high_fails(void);
-void test_gyro_below_high_fails(void);
+void test_mag_below_high_still_valid_with_warning_reason(void);
+void test_accel_below_high_still_valid(void);
+void test_gyro_below_high_still_valid(void);
 void test_never_calibrated_reason(void);
 void test_disconnected_overrides_everything(void);
 
@@ -91,9 +91,9 @@ int main(int argc, char **argv)
     RUN_TEST(test_identity_corrections_when_stages_not_done);
 
     RUN_TEST(test_all_high_passes);
-    RUN_TEST(test_mag_below_high_fails);
-    RUN_TEST(test_accel_below_high_fails);
-    RUN_TEST(test_gyro_below_high_fails);
+    RUN_TEST(test_mag_below_high_still_valid_with_warning_reason);
+    RUN_TEST(test_accel_below_high_still_valid);
+    RUN_TEST(test_gyro_below_high_still_valid);
     RUN_TEST(test_never_calibrated_reason);
     RUN_TEST(test_disconnected_overrides_everything);
 

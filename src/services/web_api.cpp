@@ -90,7 +90,10 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
     readiness_input.stage_a_done = stage_a_status.persisted_done;
     readiness_input.stage_b_done = stage_b_status.persisted_done;
     // TODO(Phase 8): stage_c_done once Stage C exists.
-    readiness_input.heading_currently_withheld = !reading.valid;
+    // Readiness still reflects an accuracy problem as "withheld" for FR-001's
+    // real-time banner even though the heading itself is no longer gated off
+    // by low accuracy (`reading.valid` alone would miss that case now).
+    readiness_input.heading_currently_withheld = !reading.valid || reading.reason_if_invalid != heading::InvalidReason::kNone;
     switch (calibration::deriveReadiness(readiness_input))
     {
         case calibration::Readiness::kReady:

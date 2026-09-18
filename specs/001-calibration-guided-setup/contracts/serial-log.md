@@ -39,7 +39,7 @@ machine-parseable. Grammar, fixed across all tags:
 | Example | When |
 |---|---|
 | `[N2K] tx pgn=127250 ok hdg=123.4` | Successful heading PGN transmit (matches constitution's example verbatim). |
-| `[N2K] tx pgn=127250 skipped reason=quality_gate` | Transmit suppressed per FR-041 — this, not silence, is how a test confirms the "no heading sent" guarantee (SC-007). |
+| `[N2K] tx pgn=127250 skipped reason=quality_gate` | Transmit suppressed per FR-041 — now only for a disconnected/non-reporting sensor (no data to send); low accuracy alone no longer suppresses transmission, it's flagged instead (see `[IMU] valid=0/1 reason=...`). This, not silence, is how a test confirms the disconnected-sensor "no heading sent" guarantee (SC-007). |
 | `[N2K] bus state=RUNNING\|BUS_OFF\|ERROR_PASSIVE\|BENCH_MODE` | On any bus-state transition. |
 | `[N2K] rx pgn=129026 sog=3.1 cog=87.0` | Throttled log of accepted COG/SOG input, used by Stage B/C HIL tests. |
 
