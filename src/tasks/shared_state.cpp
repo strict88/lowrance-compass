@@ -27,6 +27,9 @@ DebugGpsInject g_debug_gps_inject;
 SemaphoreHandle_t g_stage_b_status_mutex = nullptr;
 StageBStatusSnapshot g_stage_b_status;
 
+SemaphoreHandle_t g_stage_c_status_mutex = nullptr;
+StageCStatusSnapshot g_stage_c_status;
+
 SemaphoreHandle_t g_ssid_mutex = nullptr;
 char g_current_ssid[33] = "LowranceCompass";
 
@@ -41,6 +44,7 @@ void init()
     g_stage_a_status_mutex = xSemaphoreCreateMutex();
     g_debug_gps_mutex = xSemaphoreCreateMutex();
     g_stage_b_status_mutex = xSemaphoreCreateMutex();
+    g_stage_c_status_mutex = xSemaphoreCreateMutex();
     g_ssid_mutex = xSemaphoreCreateMutex();
     g_app_command_queue = xQueueCreate(kAppCommandQueueDepth, sizeof(AppCommand));
 }
@@ -132,6 +136,21 @@ StageBStatusSnapshot getStageBStatus()
     xSemaphoreTake(g_stage_b_status_mutex, portMAX_DELAY);
     StageBStatusSnapshot copy = g_stage_b_status;
     xSemaphoreGive(g_stage_b_status_mutex);
+    return copy;
+}
+
+void publishStageCStatus(const StageCStatusSnapshot &status)
+{
+    xSemaphoreTake(g_stage_c_status_mutex, portMAX_DELAY);
+    g_stage_c_status = status;
+    xSemaphoreGive(g_stage_c_status_mutex);
+}
+
+StageCStatusSnapshot getStageCStatus()
+{
+    xSemaphoreTake(g_stage_c_status_mutex, portMAX_DELAY);
+    StageCStatusSnapshot copy = g_stage_c_status;
+    xSemaphoreGive(g_stage_c_status_mutex);
     return copy;
 }
 

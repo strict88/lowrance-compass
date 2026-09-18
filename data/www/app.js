@@ -171,14 +171,32 @@ window.CompassBus = (function () {
     };
   }
 
-  // Poll GET /api/status once immediately so the Dashboard isn't blank while
-  // the WebSocket connects.
-  fetch("/api/status")
-    .then(function (r) {
-      return r.json();
-    })
-    .then(renderStatus)
-    .catch(function () {});
+  // A full HTTP status fetch, applied the same way a WebSocket "status"
+  // message would be (both the Dashboard's own render and calibration.js's/
+  // settings.js's CompassBus listeners) -- used both for the initial load
+  // and as a periodic safety net below.
+  function pollStatusOnce() {
+    return fetch("/api/status")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (status) {
+        status.type = "status";
+        renderStatus(status);
+        window.CompassBus._dispatch(status);
+      })
+      .catch(function () {});
+  }
+
+  pollStatusOnce();
+
+  // Safety net: a WebSocket "status" push should always keep the UI current,
+  // but if one is ever missed for any reason, this guarantees the page
+  // self-corrects within a couple of seconds instead of needing a manual
+  // reload. Runs continuously (cheap, idempotent), not just during a
+  // calibration session, so it also catches a WS message missed at any
+  // other time.
+  setInterval(pollStatusOnce, 2000);
 
   connect();
 })();

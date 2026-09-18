@@ -158,12 +158,62 @@
     </div>
   </section>
 
-  <section class="cal-card cal-card--placeholder">
+  <section id="stage-c-card" class="cal-card">
     <div class="cal-card__header">
       <h2>Stage C: Compass swing</h2>
       <span id="stage-c-status-pill" class="status-pill status-pill--not-done">Not done</span>
     </div>
-    <p class="placeholder">Available once the on-water compass swing guide is implemented.</p>
+
+    <div id="stage-c-guide">
+      <p id="stage-c-what-why" class="cal-what-why"></p>
+      <div class="cal-block">
+        <h3>Before you start</h3>
+        <ul id="stage-c-before-list" class="cal-checklist"></ul>
+      </div>
+      <p id="stage-c-duration" class="cal-duration"></p>
+      <div class="cal-actions">
+        <button id="stage-c-start-gps-btn" class="btn btn--secondary">Start GPS swing</button>
+        <button id="stage-c-start-manual-btn" class="btn btn--secondary">Start manual 8-point</button>
+      </div>
+    </div>
+
+    <div id="stage-c-swing-progress" class="cal-progress" hidden>
+      <div class="coverage-bar">
+        <div class="coverage-bar__label">Sector coverage</div>
+        <div class="coverage-bar__track">
+          <div id="stage-c-coverage-fill" class="coverage-bar__fill"></div>
+        </div>
+      </div>
+      <p>Turns completed: <strong id="stage-c-turns-value">0.0</strong></p>
+      <div id="stage-c-too-fast" class="banner banner--warn" hidden>Turning too fast -- slow down for a steady, even turn.</div>
+    </div>
+
+    <div id="stage-c-manual-entry" class="cal-progress" hidden>
+      <p>Point <strong id="stage-c-manual-point-index">1</strong> of 8: steady the boat on this compass point.</p>
+      <label for="stage-c-manual-bearing-input">True reference bearing (deg)</label>
+      <input id="stage-c-manual-bearing-input" type="number" min="0" max="359.9" step="0.1">
+      <button id="stage-c-manual-submit-btn" class="btn btn--primary">Record point</button>
+    </div>
+
+    <div id="stage-c-result-ready" class="cal-progress" hidden>
+      <p>Fit ready -- max deviation <strong id="stage-c-max-deviation-value">--</strong> deg, residual
+        <strong id="stage-c-residual-value">--</strong> deg RMS.</p>
+      <table class="cal-table">
+        <thead><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></thead>
+        <tbody><tr id="stage-c-coefficients-row"><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td></tr></tbody>
+      </table>
+      <div class="cal-actions">
+        <button id="stage-c-accept-btn" class="btn btn--primary">Accept</button>
+        <button id="stage-c-discard-btn" class="btn btn--secondary">Discard</button>
+      </div>
+    </div>
+
+    <div id="stage-c-result" class="cal-result" hidden></div>
+
+    <div class="cal-actions">
+      <button id="stage-c-cancel-btn" class="btn btn--secondary" hidden>Cancel</button>
+      <button id="stage-c-recalibrate-btn" class="btn btn--secondary" hidden>Recalibrate</button>
+    </div>
   </section>
 </main>
 

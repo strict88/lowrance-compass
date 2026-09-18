@@ -21,6 +21,7 @@ constexpr UBaseType_t kPriority = configMAX_PRIORITIES - 2;  // high priority
 constexpr BaseType_t kCoreId = 1;
 constexpr uint32_t kWaitTimeoutMs = 50;  // fallback poll if an INT edge is missed
 constexpr uint32_t kLogThrottleMs = 1000;
+constexpr uint32_t kReconnectRetryIntervalMs = 3000;  // how often to retry init() while disconnected
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kDegToRad = kPi / 180.0f;
@@ -65,6 +66,7 @@ void taskFn(void * /*param*/)
     bool was_connected = true;
     bool was_valid = false;
     uint32_t last_log_ms = 0;
+    uint32_t last_reconnect_attempt_ms = 0;
 
     for (;;)
     {
@@ -81,6 +83,22 @@ void taskFn(void * /*param*/)
         {
             diag_log::Line("IMU").token(connected ? "reconnected" : "disconnected").emit();
             was_connected = connected;
+        }
+
+        // Self-heal: retry init() periodically while disconnected, so a
+        // sensor that starts absent (e.g. not yet wired up) or that drops
+        // off the bus comes back automatically once it's actually present,
+        // with no reboot required. init() is the interface method (rather
+        // than ImuDriverBno08x::hardResetAndReinit(), which isn't part of
+        // ImuDriver) so this stays driver-agnostic/fake-able.
+        if (!connected)
+        {
+            uint32_t now_ms = millis();
+            if (now_ms - last_reconnect_attempt_ms >= kReconnectRetryIntervalMs)
+            {
+                last_reconnect_attempt_ms = now_ms;
+                g_driver->init();
+            }
         }
 
         shared_state::HeadingCorrectionInputs corrections = shared_state::getHeadingCorrectionInputs();

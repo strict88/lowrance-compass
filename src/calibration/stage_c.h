@@ -4,6 +4,7 @@
 
 #include "calibration/deviation_fit.h"
 #include "drivers/kv_store/kv_store.h"
+#include "drivers/kv_store/record_envelope.h"
 #include "heading/pipeline.h"
 #include "thresholds.h"
 
@@ -61,7 +62,9 @@ struct DeviationCorrection
 constexpr uint8_t kDeviationCorrectionSchemaVersion = 1;
 
 bool saveDeviationCorrection(KeyValueStore &store, const DeviationCorrection &correction);
-bool loadDeviationCorrection(KeyValueStore &store, DeviationCorrection &out);
+// See stage_a.h's loadSensorCalibrationProfile for `status_out`'s purpose.
+bool loadDeviationCorrection(KeyValueStore &store, DeviationCorrection &out,
+                              record_envelope::Status *status_out = nullptr);
 
 // Converts a loaded (or absent) DeviationCorrection into the heading
 // pipeline's correction input -- zero curve when `exists` is false

@@ -37,4 +37,12 @@ private:
     Adafruit_BNO08x bno_;
     ImuReport latest_{};
     uint32_t last_report_ms_ = 0;
+
+    // False whenever begin_I2C() has never succeeded (no chip present/ACKing,
+    // or not yet re-initialized after a hard reset). readReport() must not
+    // touch `bno_`'s SH-2/SHTP internals while this is false -- calling into
+    // an Adafruit_BNO08x that was never successfully begin()'d crashes
+    // (LoadProhibited deep inside the vendor sh2/shtp state machine) instead
+    // of failing gracefully.
+    bool initialized_ = false;
 };

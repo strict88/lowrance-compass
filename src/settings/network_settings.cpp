@@ -35,11 +35,20 @@ bool saveNetworkSettings(KeyValueStore &store, const NetworkSettings &settings)
                                   sizeof(settings));
 }
 
-bool loadNetworkSettings(KeyValueStore &store, NetworkSettings &out)
+bool loadNetworkSettings(KeyValueStore &store, NetworkSettings &out, record_envelope::Status *status_out)
 {
     NetworkSettings loaded;
     auto result = record_envelope::load(store, kNetworkSettingsSchemaVersion, reinterpret_cast<uint8_t *>(&loaded),
                                          sizeof(loaded));
+    if (status_out != nullptr)
+    {
+        *status_out = result.status;
+    }
+    if (result.status == record_envelope::Status::kCrcMismatch ||
+        result.status == record_envelope::Status::kSchemaMismatch)
+    {
+        record_envelope::resetToDefault(store);  // FR-045; see calibration/stage_a.cpp's equivalent.
+    }
     if (result.status != record_envelope::Status::kOk)
     {
         return false;

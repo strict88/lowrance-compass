@@ -1,5 +1,7 @@
 #include "web_api.h"
 
+#include <cstring>
+
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 #include <AsyncTCP.h>
@@ -9,6 +11,7 @@
 
 #include "calibration/readiness.h"
 #include "guide/guide_content.h"
+#include "services/diag_log.h"
 #include "n2k_codec/pgn_codec.h"
 #include "tasks/shared_state.h"
 #include "thresholds.h"
@@ -57,6 +60,21 @@ const char *busStateName(CanBusState state)
     }
 }
 
+// A record's saved_at_iso8601 holds the literal string "unavailable" (see
+// app_task.cpp) when no NMEA 2000 System Time has ever been received
+// (data-model.md sec4's "date unavailable" case) -- never an empty string.
+// The UI's `new Date(stageX.saved_at)` needs `saved_at` to be JSON null in
+// that case, not a string ("unavailable" parses as an Invalid Date rather
+// than falling into the UI's own "date unavailable" fallback).
+const char *jsonSavedAt(const char *iso8601)
+{
+    if (iso8601 == nullptr || strcmp(iso8601, "unavailable") == 0)
+    {
+        return nullptr;
+    }
+    return iso8601;
+}
+
 const char *invalidReasonName(heading::InvalidReason reason)
 {
     switch (reason)
@@ -75,25 +93,23 @@ const char *invalidReasonName(heading::InvalidReason reason)
 
 // Assembles the full GET /api/status body (contracts/rest-api.md), reused
 // for the periodic `status` WebSocket message (contracts/websocket.md).
-// Stage A is wired to its real persisted/live status via shared_state;
-// Stages B/C are still hardcoded NOT_DONE, wired up by their own later tasks
-// (T095/T119).
+// All three stages are wired to their real persisted/live status via
+// shared_state.
 void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service, N2kService &n2k_service, Clock &clock)
 {
     doc["schema"] = 1;
 
     shared_state::StageAStatusSnapshot stage_a_status = shared_state::getStageAStatus();
     shared_state::StageBStatusSnapshot stage_b_status = shared_state::getStageBStatus();
+    shared_state::StageCStatusSnapshot stage_c_status = shared_state::getStageCStatus();
     heading::HeadingReading reading = shared_state::getHeadingReading();
 
     calibration::ReadinessInput readiness_input;
     readiness_input.stage_a_done = stage_a_status.persisted_done;
     readiness_input.stage_b_done = stage_b_status.persisted_done;
-    // TODO(Phase 8): stage_c_done once Stage C exists.
-    // Readiness still reflects an accuracy problem as "withheld" for FR-001's
-    // real-time banner even though the heading itself is no longer gated off
-    // by low accuracy (`reading.valid` alone would miss that case now).
+    readiness_input.stage_c_done = stage_c_status.persisted_done;
     readiness_input.heading_currently_withheld = !reading.valid || reading.reason_if_invalid != heading::InvalidReason::kNone;
+
     switch (calibration::deriveReadiness(readiness_input))
     {
         case calibration::Readiness::kReady:
@@ -132,7 +148,7 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
         quality["mag"] = stage_a_status.saved_mag_accuracy;
         quality["accel"] = stage_a_status.saved_accel_accuracy;
         quality["gyro"] = stage_a_status.saved_gyro_accuracy;
-        stage_a_obj["saved_at"] = stage_a_status.saved_at_iso8601;
+        stage_a_obj["saved_at"] = jsonSavedAt(stage_a_status.saved_at_iso8601);
     }
     else
     {
@@ -145,17 +161,27 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
         stage_b_obj["state"] = "DONE";
         stage_b_obj["offset_deg"] = stage_b_status.saved_offset_deg;
         stage_b_obj["method"] = stage_b_status.saved_method_is_gps ? "GPS_COURSE" : "KNOWN_BEARING";
-        stage_b_obj["saved_at"] = stage_b_status.saved_at_iso8601;
+        stage_b_obj["saved_at"] = jsonSavedAt(stage_b_status.saved_at_iso8601);
     }
     else
     {
         stage_b_obj["state"] = "NOT_DONE";
         stage_b_obj["saved_at"] = nullptr;
     }
-    // TODO(Phase 8): stage "c" once Stage C exists.
     JsonObject stage_c_obj = stages["c"].to<JsonObject>();
-    stage_c_obj["state"] = "NOT_DONE";
-    stage_c_obj["saved_at"] = nullptr;
+    if (stage_c_status.persisted_done)
+    {
+        stage_c_obj["state"] = "DONE";
+        stage_c_obj["max_deviation_deg"] = stage_c_status.saved_max_deviation_deg;
+        stage_c_obj["residual_rms_deg"] = stage_c_status.saved_residual_rms_deg;
+        stage_c_obj["source"] = stage_c_status.saved_source_is_gps ? "GPS_SWING" : "MANUAL_8PT";
+        stage_c_obj["saved_at"] = jsonSavedAt(stage_c_status.saved_at_iso8601);
+    }
+    else
+    {
+        stage_c_obj["state"] = "NOT_DONE";
+        stage_c_obj["saved_at"] = nullptr;
+    }
 
     JsonObject session = doc["session"].to<JsonObject>();
     session["active_stage"] = stageName(calibration_service.activeStage());
@@ -202,6 +228,35 @@ void buildStatusJson(JsonDocument &doc, CalibrationService &calibration_service,
         else
         {
             progress["preview_offset_deg"] = nullptr;
+        }
+    }
+    else if (stage_c_status.session_active)
+    {
+        progress["turns_completed"] = stage_c_status.turns_completed;
+        progress["sector_coverage_pct"] = stage_c_status.sector_coverage_pct;
+        progress["turning_too_fast"] = stage_c_status.turning_too_fast;
+        if (stage_c_status.awaiting_manual_point)
+        {
+            progress["manual_point_index"] = stage_c_status.manual_point_index;
+        }
+        else
+        {
+            progress["manual_point_index"] = nullptr;
+        }
+        if (stage_c_status.has_candidate_result)
+        {
+            progress["candidate_max_deviation_deg"] = stage_c_status.candidate_max_deviation_deg;
+            progress["candidate_residual_rms_deg"] = stage_c_status.candidate_residual_rms_deg;
+            JsonArray coeffs = progress["candidate_coefficients"].to<JsonArray>();
+            for (float c : stage_c_status.candidate_coefficients)
+            {
+                coeffs.add(c);
+            }
+        }
+        else
+        {
+            progress["candidate_max_deviation_deg"] = nullptr;
+            progress["candidate_residual_rms_deg"] = nullptr;
         }
     }
 
@@ -295,12 +350,34 @@ void sendConfirmCommandAndRespond(AsyncWebServerRequest *request, JsonVariant &j
     request->send(cmd.success ? 200 : 400, "application/json", result_buf);
 }
 
-void onWsEvent(AsyncWebSocket * /*server*/, AsyncWebSocketClient * /*client*/, AwsEventType /*type*/, void * /*arg*/,
+void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void * /*arg*/,
                uint8_t * /*data*/, size_t /*len*/)
 {
     // Server-push only (contracts/websocket.md): the UI issues commands over
     // REST, never over the socket, so no inbound message handling is needed
     // here beyond AsyncWebSocket's own connect/disconnect bookkeeping.
+    switch (type)
+    {
+        case WS_EVT_CONNECT:
+            diag_log::Line("WIFI")
+                .token("ws_connect")
+                .kv("client_id", static_cast<long>(client->id()))
+                .kv("clients", static_cast<long>(server->count()))
+                .emit();
+            break;
+        case WS_EVT_DISCONNECT:
+            diag_log::Line("WIFI")
+                .token("ws_disconnect")
+                .kv("client_id", static_cast<long>(client->id()))
+                .kv("clients", static_cast<long>(server->count()))
+                .emit();
+            break;
+        case WS_EVT_ERROR:
+            diag_log::Line("WIFI").token("ws_error").kv("client_id", static_cast<long>(client->id())).emit();
+            break;
+        default:
+            break;
+    }
 }
 
 }  // namespace
@@ -465,13 +542,52 @@ void start(CalibrationService &calibration_service, N2kService &n2k_service, Clo
         sendConfirmCommandAndRespond(request, json, shared_state::AppCommandType::kNetworkReset);
     });
 
-    g_server.on("/api/calibration/c/start", HTTP_POST, [](AsyncWebServerRequest *request) {
-        // TODO(Phase 8/US4): parse the {"mode":"gps"|"manual"} body once
-        // Stage C exists; defaults to the GPS-swing sub-flow for now.
-        sendCommandAndRespond(request, shared_state::AppCommandType::kCalStartCGps);
+    g_server.on("/api/calibration/c/start", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        const char *mode = json["mode"] | "gps";
+        bool manual = strcmp(mode, "manual") == 0;
+        sendCommandAndRespond(request, manual ? shared_state::AppCommandType::kCalStartCManual
+                                               : shared_state::AppCommandType::kCalStartCGps);
     });
     g_server.on("/api/calibration/c/cancel", HTTP_POST, [](AsyncWebServerRequest *request) {
         sendCommandAndRespond(request, shared_state::AppCommandType::kCalCancelC);
+    });
+    g_server.on("/api/calibration/c/manual-point", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        shared_state::AppCommand cmd;
+        cmd.type = shared_state::AppCommandType::kCalCManualPoint;
+        cmd.float_param = json["reference_heading_deg"] | 0.0f;
+        char result_buf[256];
+        cmd.result_buf = result_buf;
+        cmd.result_buf_len = sizeof(result_buf);
+        cmd.done_sem = xSemaphoreCreateBinary();
+        if (cmd.done_sem == nullptr)
+        {
+            request->send(503, "application/json", "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"out of memory\"}}");
+            return;
+        }
+        if (!shared_state::postAppCommand(cmd, 200))
+        {
+            vSemaphoreDelete(cmd.done_sem);
+            request->send(503, "application/json", "{\"schema\":1,\"error\":{\"code\":\"BUSY\",\"message\":\"command queue full\"}}");
+            return;
+        }
+        if (xSemaphoreTake(cmd.done_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
+        {
+            vSemaphoreDelete(cmd.done_sem);
+            request->send(504, "application/json",
+                           "{\"schema\":1,\"error\":{\"code\":\"TIMEOUT\",\"message\":\"no response from app task\"}}");
+            return;
+        }
+        vSemaphoreDelete(cmd.done_sem);
+        request->send(cmd.success ? 200 : 400, "application/json", result_buf);
+    });
+    g_server.on("/api/calibration/c/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
+        sendCommandAndRespond(request, shared_state::AppCommandType::kCalApplyC);
+    });
+    g_server.on("/api/calibration/c/discard", HTTP_POST, [](AsyncWebServerRequest *request) {
+        sendCommandAndRespond(request, shared_state::AppCommandType::kCalDiscardC);
+    });
+    g_server.on("/api/calibration/c/reset", HTTP_POST, [](AsyncWebServerRequest *request, JsonVariant &json) {
+        sendConfirmCommandAndRespond(request, json, shared_state::AppCommandType::kCalResetC);
     });
 
     g_server.serveStatic("/", LittleFS, "/www/").setDefaultFile("index.html");
@@ -497,13 +613,27 @@ void broadcastStatusIfDue(CalibrationService &calibration_service, N2kService &n
         return;
     }
 
+    // FR-007's inactivity timeout exists to catch an *abandoned* session
+    // (browser tab closed) -- not one being actively watched. A connected
+    // WebSocket client actually receiving these broadcasts means someone is
+    // still there, so it counts as activity the same as an explicit command
+    // would; otherwise a normal calibration attempt that just watches live
+    // progress (never re-clicking anything mid-procedure) would silently
+    // auto-cancel partway through.
+    calibration_service.noteClientActivity();
+
     JsonDocument doc;
     buildStatusJson(doc, calibration_service, n2k_service, clock);
     doc["type"] = "status";
 
-    char buf[768];
-    size_t len = serializeJson(doc, buf, sizeof(buf));
-    g_ws.textAll(buf, len);
+    // A fixed-size buffer here silently truncated to invalid JSON once the
+    // payload grew past it (e.g. mid-Stage-A, with positions_done filled in)
+    // -- the browser's JSON.parse() would then throw and drop that update,
+    // making the UI look "stuck" until the next full GET /api/status (a
+    // page reload). String grows to fit, so this can't truncate.
+    String out;
+    serializeJson(doc, out);
+    g_ws.textAll(out);
 }
 
 void configureAccessPoint(const char *ssid)
@@ -525,9 +655,9 @@ void broadcastSettingsChanged(const char *ssid, uint32_t applies_in_s)
     doc["ssid"] = ssid;
     doc["applies_in_s"] = applies_in_s;
 
-    char buf[192];
-    size_t len = serializeJson(doc, buf, sizeof(buf));
-    g_ws.textAll(buf, len);
+    String out;
+    serializeJson(doc, out);
+    g_ws.textAll(out);
 }
 
 void broadcastCalibrationResult(const char *stage, const char *outcome, const char *reason)
@@ -545,9 +675,9 @@ void broadcastCalibrationResult(const char *stage, const char *outcome, const ch
     doc["reason"] = reason != nullptr ? reason : nullptr;
     doc["result"].to<JsonObject>();
 
-    char buf[256];
-    size_t len = serializeJson(doc, buf, sizeof(buf));
-    g_ws.textAll(buf, len);
+    String out;
+    serializeJson(doc, out);
+    g_ws.textAll(out);
 }
 
 }  // namespace web_api

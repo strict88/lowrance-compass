@@ -174,6 +174,37 @@ struct StageBStatusSnapshot
 void publishStageBStatus(const StageBStatusSnapshot &status);
 StageBStatusSnapshot getStageBStatus();
 
+// A web_api-facing snapshot of Stage C's persisted + live status
+// (contracts/rest-api.md's stages.c / session.progress.c shapes).
+struct StageCStatusSnapshot
+{
+    bool persisted_done = false;
+    float saved_max_deviation_deg = 0.0f;
+    float saved_residual_rms_deg = 0.0f;
+    bool saved_source_is_gps = false;
+    char saved_at_iso8601[32] = {0};
+
+    bool session_active = false;
+    float turns_completed = 0.0f;
+    float sector_coverage_pct = 0.0f;
+    bool turning_too_fast = false;
+    bool awaiting_manual_point = false;
+    int manual_point_index = 0;  // 1..8 while awaiting_manual_point
+
+    // Set once the swing/manual entry has produced a fit awaiting Apply/Discard
+    // (StageCState::kResultReady) -- not part of contracts/rest-api.md's
+    // documented session.progress.c shape, but needed by the UI to show the
+    // curve/max-deviation/residual before the user accepts it (T124), same
+    // idea as Stage B's preview_offset_deg.
+    bool has_candidate_result = false;
+    float candidate_max_deviation_deg = 0.0f;
+    float candidate_residual_rms_deg = 0.0f;
+    float candidate_coefficients[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+void publishStageCStatus(const StageCStatusSnapshot &status);
+StageCStatusSnapshot getStageCStatus();
+
 // The current SSID, published by AppTask (which owns SettingsService)
 // whenever it changes, for web_api's GET /api/status.settings.ssid (its
 // route handlers run in a different task context than AppTask).

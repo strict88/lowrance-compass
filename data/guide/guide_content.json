@@ -59,6 +59,33 @@
         "GPS course method waiting: it needs boat speed above a minimum and a steady course -- hold a straight line at a reasonable cruising speed.",
         "Wrong-looking offset: discard and redo Set level, making sure the boat was genuinely at rest."
       ]
+    },
+    "c": {
+      "what_and_why": "A compass swing measures the boat's own magnetic deviation -- the small heading error caused by the boat's engine, wiring, and metal structure, which changes with the boat's own heading. Correcting it is the last step to a fully accurate compass.",
+      "before_you_start": [
+        "Stages A and B should already be done -- this stage corrects the boat's own magnetism on top of an already-calibrated, already-aligned sensor.",
+        "Find open water with room for at least two full slow circles, away from other traffic.",
+        "If your chartplotter provides GPS course over ground (COG) to the bus, the guided swing below will use it automatically; otherwise use the manual 8-point fallback."
+      ],
+      "steps": [
+        {
+          "title": "Guided GPS swing",
+          "detail": "Start the swing and steer at least two complete, slow, steady circles at a safe cruising speed, covering every heading. The coverage ring fills in as each heading direction gets enough samples.",
+          "illustration_svg_id": "stage_c_step1"
+        },
+        {
+          "title": "Manual 8-point fallback",
+          "detail": "If no GPS course source is available, steady the boat on each of the 8 compass points (N, NE, E, SE, S, SW, W, NW) in turn and enter the true reference bearing for each.",
+          "illustration_svg_id": "stage_c_step2"
+        }
+      ],
+      "duration_estimate": "About 10-15 minutes on the water",
+      "success_looks_like": "Full sector coverage across at least two turns, with a low-residual deviation curve -- the app shows the fitted curve, max deviation, and fit quality before you accept it.",
+      "if_it_fails": [
+        "Turning too fast: the app will flag it -- slow down and keep the turn rate even.",
+        "Rejected for incomplete coverage: keep turning until every heading direction has enough accepted samples across two full turns.",
+        "Rejected for high residual or deviation: strong current/wind, a magnetic disturbance, or an incomplete Stage A/B may be the cause -- redo the swing once conditions are calmer."
+      ]
     }
   }
 }

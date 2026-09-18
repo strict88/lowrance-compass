@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <!-- Stage C illustrations, referenced by guide_content.json's illustration_svg_id
+       via <use href="illustrations/stage_c.svg#<id>">. 0 0 120 120 viewBox,
+       currentColor strokes so they inherit the page's theme. -->
+
+  <symbol id="stage_c_step1" viewBox="0 0 120 120">
+    <!-- boat tracing a circle, with a GPS satellite mark -->
+    <circle cx="60" cy="65" r="35" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="6 5"/>
+    <path d="M45 32 Q60 20 75 32 L70 40 L50 40 Z" fill="currentColor"/>
+    <circle cx="95" cy="25" r="5" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="95" y1="25" x2="80" y2="40" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3"/>
+  </symbol>
+
+  <symbol id="stage_c_step2" viewBox="0 0 120 120">
+    <!-- compass rose with 8 marked points -->
+    <circle cx="60" cy="60" r="35" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <g fill="currentColor">
+      <circle cx="60" cy="25" r="3"/>
+      <circle cx="85" cy="35" r="3"/>
+      <circle cx="95" cy="60" r="3"/>
+      <circle cx="85" cy="85" r="3"/>
+      <circle cx="60" cy="95" r="3"/>
+      <circle cx="35" cy="85" r="3"/>
+      <circle cx="25" cy="60" r="3"/>
+      <circle cx="35" cy="35" r="3"/>
+    </g>
+    <text x="60" y="112" text-anchor="middle" font-size="12" fill="currentColor" font-family="sans-serif">8 points</text>
+  </symbol>
+</svg>

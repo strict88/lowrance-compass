@@ -17,8 +17,11 @@ public:
     explicit SettingsService(KeyValueStore &store) : store_(store) {}
 
     // Loads the persisted SSID, or a fixed factory default if none is saved
-    // yet.
-    void init();
+    // yet. `status_out`, when non-null, receives the underlying
+    // record_envelope::Status so a hardware-only caller can log a
+    // corrupted-record reset (FR-045/046); a corrupted record is reset to
+    // default internally either way (native-safe, no logging here).
+    void init(record_envelope::Status *status_out = nullptr);
 
     const settings::NetworkSettings &current() const { return current_; }
 

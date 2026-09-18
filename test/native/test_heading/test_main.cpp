@@ -65,6 +65,11 @@ void test_absent_installation_alignment_yields_identity_zero(void);
 void test_present_installation_alignment_carries_through_to_the_pipeline(void);
 void test_nonidentity_level_reference_is_applied(void);
 
+// test_pipeline_with_stage_c.cpp
+void test_absent_deviation_correction_yields_zero_curve(void);
+void test_present_deviation_correction_is_applied_at_compass_heading(void);
+void test_deviation_correction_matches_evaluateDeviationRad_directly(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -120,6 +125,10 @@ int main(int argc, char **argv)
     RUN_TEST(test_absent_installation_alignment_yields_identity_zero);
     RUN_TEST(test_present_installation_alignment_carries_through_to_the_pipeline);
     RUN_TEST(test_nonidentity_level_reference_is_applied);
+
+    RUN_TEST(test_absent_deviation_correction_yields_zero_curve);
+    RUN_TEST(test_present_deviation_correction_is_applied_at_compass_heading);
+    RUN_TEST(test_deviation_correction_matches_evaluateDeviationRad_directly);
 
     return UNITY_END();
 }
