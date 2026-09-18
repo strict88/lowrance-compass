@@ -37,6 +37,12 @@ void test_invalid_ssid_does_not_schedule_a_restart(void);
 void test_clear_pending_restart_stops_it_from_firing_again(void);
 void test_reset_to_default_restarts_immediately(void);
 
+// test_corrupted_record_recovery.cpp
+void test_stage_a_wrapper_resets_corrupted_profile(void);
+void test_stage_b_wrapper_resets_corrupted_alignment(void);
+void test_stage_c_wrapper_resets_corrupted_deviation(void);
+void test_network_settings_wrapper_resets_corrupted_ssid(void);
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -69,6 +75,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_invalid_ssid_does_not_schedule_a_restart);
     RUN_TEST(test_clear_pending_restart_stops_it_from_firing_again);
     RUN_TEST(test_reset_to_default_restarts_immediately);
+
+    RUN_TEST(test_stage_a_wrapper_resets_corrupted_profile);
+    RUN_TEST(test_stage_b_wrapper_resets_corrupted_alignment);
+    RUN_TEST(test_stage_c_wrapper_resets_corrupted_deviation);
+    RUN_TEST(test_network_settings_wrapper_resets_corrupted_ssid);
 
     return UNITY_END();
 }

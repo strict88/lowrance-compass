@@ -7,6 +7,7 @@
 
 #include "calibration/stage_a.h"
 #include "calibration/stage_b.h"
+#include "calibration/stage_c.h"
 #include "drivers/kv_store/record_envelope.h"
 #include "n2k_codec/variation.h"
 #include "pin_config.h"
@@ -25,7 +26,13 @@ namespace
 constexpr uint32_t kStackSize = 8192;
 constexpr UBaseType_t kPriority = configMAX_PRIORITIES - 4;  // lower than ImuTask/N2kTask
 constexpr BaseType_t kCoreId = 0;
-constexpr uint32_t kCommandWaitMs = 200;
+// How often the main loop polls for a command (and, incidentally, how often
+// driveStageA/B/C sample the IMU/GPS). At the old 200ms, Stage A's own
+// accuracy check only saw 1 in ~20 IMU reports -- a brief all-High moment
+// (mag/accel/gyro simultaneously High, which is what Stage A is waiting
+// for) could easily land in one of the 19 reports never sampled, so it kept
+// looking "not quite there" indefinitely even once the sensor genuinely was.
+constexpr uint32_t kCommandWaitMs = 20;
 constexpr const char *kFirmwareVersion = "0.1.0";
 constexpr float kRadToDeg = 57.29577951308232f;
 constexpr float kDegToRad = 1.0f / kRadToDeg;
@@ -44,6 +51,37 @@ const char *stageName(CalibrationService::Stage stage)
         case CalibrationService::Stage::kNone:
         default:
             return "NONE";
+    }
+}
+
+// FR-046: logs a structured [DATA] line whenever a boot-time record load
+// found the record corrupted/incompatible; a no-op on kOk/kAbsent (nothing
+// to report -- kAbsent just means "never saved").
+void logIfRecordCorrupted(const char *record_name, record_envelope::Status status)
+{
+    if (status == record_envelope::Status::kCrcMismatch)
+    {
+        diag_log::logRecordReset(record_name, "crc_mismatch");
+    }
+    else if (status == record_envelope::Status::kSchemaMismatch)
+    {
+        diag_log::logRecordReset(record_name, "schema_mismatch");
+    }
+}
+
+const char *stageCRejectReasonName(calibration::StageCRejectReason reason)
+{
+    switch (reason)
+    {
+        case calibration::StageCRejectReason::kResidualTooHigh:
+            return "residual_too_high";
+        case calibration::StageCRejectReason::kDeviationTooHigh:
+            return "deviation_too_high";
+        case calibration::StageCRejectReason::kIncompleteCoverage:
+            return "incomplete_coverage";
+        case calibration::StageCRejectReason::kNone:
+        default:
+            return "none";
     }
 }
 
@@ -67,17 +105,19 @@ struct Context
     ImuDriver *imu_driver;
     KeyValueStore *stage_a_store;
     KeyValueStore *stage_b_store;
+    KeyValueStore *stage_c_store;
     SettingsService *settings_service;
     Clock *clock;
 };
 
 // Publishes shared_state's HeadingCorrectionInputs from the current
-// CalibrationService/StageA/StageB state, so ImuTask's pipeline sees the
-// right active_stage, saved Stage A profile accuracy (for the Stage A
-// in-progress freeze, FR-041), and the persisted Stage B level/offset
-// correction.
+// CalibrationService/StageA/StageB/StageC state, so ImuTask's pipeline sees
+// the right active_stage, saved Stage A profile accuracy (for the Stage A
+// in-progress freeze, FR-041), the persisted Stage B level/offset
+// correction, and the persisted Stage C deviation correction.
 void publishCorrectionInputs(const Context &ctx, const calibration::SensorCalibrationProfile *saved_profile,
-                              const calibration::InstallationAlignment *saved_alignment)
+                              const calibration::InstallationAlignment *saved_alignment,
+                              const calibration::DeviationCorrection *saved_deviation)
 {
     shared_state::HeadingCorrectionInputs inputs = shared_state::getHeadingCorrectionInputs();
 
@@ -114,6 +154,14 @@ void publishCorrectionInputs(const Context &ctx, const calibration::SensorCalibr
     }
     calibration::applyInstallationAlignment(alignment_or_default, alignment_exists, inputs.level_reference,
                                              inputs.mounting_offset);
+
+    calibration::DeviationCorrection deviation_or_default;
+    bool deviation_exists = saved_deviation != nullptr;
+    if (deviation_exists)
+    {
+        deviation_or_default = *saved_deviation;
+    }
+    calibration::applyDeviationCorrection(deviation_or_default, deviation_exists, inputs.deviation_correction);
 
     shared_state::publishHeadingCorrectionInputs(inputs);
 }
@@ -181,7 +229,65 @@ void publishStageBStatus(const CalibrationService &calibration_service, const ca
     shared_state::publishStageBStatus(status);
 }
 
-void handleStageAStart(Context &ctx, calibration::StageA &stage_a, shared_state::AppCommand &cmd)
+void publishStageCStatus(const CalibrationService &calibration_service, const calibration::StageC &stage_c,
+                          const calibration::DeviationCorrection &saved_deviation, bool has_saved_deviation)
+{
+    shared_state::StageCStatusSnapshot status;
+    status.persisted_done = has_saved_deviation;
+    if (has_saved_deviation)
+    {
+        status.saved_max_deviation_deg = saved_deviation.max_deviation_rad * kRadToDeg;
+        status.saved_residual_rms_deg = saved_deviation.residual_rms_rad * kRadToDeg;
+        status.saved_source_is_gps =
+            saved_deviation.source == static_cast<uint8_t>(calibration::StageCSource::kGpsSwing);
+        snprintf(status.saved_at_iso8601, sizeof(status.saved_at_iso8601), "%s", saved_deviation.saved_at_iso8601);
+    }
+
+    status.session_active = calibration_service.activeStage() == CalibrationService::Stage::kC;
+    if (status.session_active)
+    {
+        status.turns_completed = stage_c.turnsCompleted();
+        status.sector_coverage_pct = stage_c.sectorCoveragePct();
+        status.turning_too_fast = stage_c.turningTooFast();
+        status.awaiting_manual_point = stage_c.state() == calibration::StageCState::kAwaitingManualPoint;
+        status.manual_point_index = status.awaiting_manual_point ? stage_c.manualPointIndex() : 0;
+
+        status.has_candidate_result = stage_c.state() == calibration::StageCState::kResultReady;
+        if (status.has_candidate_result)
+        {
+            status.candidate_max_deviation_deg = stage_c.candidateMaxDeviationRad() * kRadToDeg;
+            status.candidate_residual_rms_deg = stage_c.candidateResidualRmsRad() * kRadToDeg;
+            heading::DeviationCoefficients coeffs = stage_c.candidateCoefficients();
+            status.candidate_coefficients[0] = coeffs.a;
+            status.candidate_coefficients[1] = coeffs.b;
+            status.candidate_coefficients[2] = coeffs.c;
+            status.candidate_coefficients[3] = coeffs.d;
+            status.candidate_coefficients[4] = coeffs.e;
+        }
+    }
+
+    shared_state::publishStageCStatus(status);
+}
+
+// FR-032 (quoted): "When the user starts a new Stage A calibration attempt or
+// resets Stage A, the system MUST indicate to the user that the Stage C
+// result may also need to be redone" -- surfaced as a response field plus a
+// serial log note whenever a DeviationCorrection is currently saved.
+void noteStageCRedoHint(bool has_saved_deviation, char *body, size_t body_len, const char *body_prefix)
+{
+    if (has_saved_deviation)
+    {
+        diag_log::Line("CAL").kv("stage", "A").token("note").kv("hint", "stage_c_may_need_redo").emit();
+        snprintf(body, body_len, "%s,\"stage_c_may_need_redo\":true}", body_prefix);
+    }
+    else
+    {
+        snprintf(body, body_len, "%s}", body_prefix);
+    }
+}
+
+void handleStageAStart(Context &ctx, calibration::StageA &stage_a, bool has_saved_deviation,
+                        shared_state::AppCommand &cmd)
 {
     CalibrationService::Stage busy_stage = CalibrationService::Stage::kNone;
     if (!ctx.calibration_service->tryStart(CalibrationService::Stage::kA, busy_stage))
@@ -196,10 +302,15 @@ void handleStageAStart(Context &ctx, calibration::StageA &stage_a, shared_state:
         return;
     }
 
+    // Dynamic calibration is enabled once, continuously, at driver init
+    // (imu_driver_bno08x.cpp) rather than here -- it needs to be running in
+    // normal operation too, not just while Stage A is active.
     float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
     stage_a.start(now_s);
     diag_log::Line("CAL").kv("stage", "A").kv("state", "AwaitingStillness").emit();
-    respond(cmd, true, "{\"schema\":1,\"started\":true}");
+    char body[96];
+    noteStageCRedoHint(has_saved_deviation, body, sizeof(body), "{\"schema\":1,\"started\":true");
+    respond(cmd, true, body);
 }
 
 void handleStageACancel(Context &ctx, calibration::StageA &stage_a, shared_state::AppCommand &cmd)
@@ -212,7 +323,8 @@ void handleStageACancel(Context &ctx, calibration::StageA &stage_a, shared_state
 }
 
 void handleStageAReset(Context &ctx, calibration::SensorCalibrationProfile *saved_profile, bool *has_saved_profile,
-                        const calibration::InstallationAlignment *saved_alignment, shared_state::AppCommand &cmd)
+                        const calibration::InstallationAlignment *saved_alignment,
+                        const calibration::DeviationCorrection *saved_deviation, shared_state::AppCommand &cmd)
 {
     if (!cmd.confirm)
     {
@@ -225,10 +337,12 @@ void handleStageAReset(Context &ctx, calibration::SensorCalibrationProfile *save
     record_envelope::resetToDefault(*ctx.stage_a_store);
     *has_saved_profile = false;
     *saved_profile = calibration::SensorCalibrationProfile{};
-    publishCorrectionInputs(ctx, nullptr, saved_alignment);
+    publishCorrectionInputs(ctx, nullptr, saved_alignment, saved_deviation);
 
     diag_log::Line("CAL").kv("stage", "A").kv("result", "reset").emit();
-    respond(cmd, true, "{\"schema\":1,\"reset\":true}");
+    char body[96];
+    noteStageCRedoHint(saved_deviation != nullptr, body, sizeof(body), "{\"schema\":1,\"reset\":true");
+    respond(cmd, true, body);
 }
 
 void handleStageBStart(Context &ctx, calibration::StageB &stage_b, shared_state::AppCommand &cmd)
@@ -352,7 +466,8 @@ void handleStageBBearing(Context &ctx, calibration::StageB &stage_b, shared_stat
 }
 
 void handleStageBApply(Context &ctx, calibration::StageB &stage_b, calibration::InstallationAlignment *saved_alignment,
-                        bool *has_saved_alignment, shared_state::AppCommand &cmd)
+                        bool *has_saved_alignment, const calibration::SensorCalibrationProfile *saved_profile,
+                        const calibration::DeviationCorrection *saved_deviation, shared_state::AppCommand &cmd)
 {
     if (stage_b.state() != calibration::StageBState::kOffsetComputed)
     {
@@ -384,6 +499,7 @@ void handleStageBApply(Context &ctx, calibration::StageB &stage_b, calibration::
     {
         *saved_alignment = alignment;
         *has_saved_alignment = true;
+        publishCorrectionInputs(ctx, saved_profile, saved_alignment, saved_deviation);
         diag_log::Line("CAL")
             .kv("stage", "B")
             .kv("result", "saved")
@@ -414,7 +530,8 @@ void handleStageBDiscard(Context &ctx, calibration::StageB &stage_b, shared_stat
 }
 
 void handleStageBReset(Context &ctx, calibration::InstallationAlignment *saved_alignment, bool *has_saved_alignment,
-                        const calibration::SensorCalibrationProfile *saved_profile, shared_state::AppCommand &cmd)
+                        const calibration::SensorCalibrationProfile *saved_profile,
+                        const calibration::DeviationCorrection *saved_deviation, shared_state::AppCommand &cmd)
 {
     if (!cmd.confirm)
     {
@@ -427,7 +544,7 @@ void handleStageBReset(Context &ctx, calibration::InstallationAlignment *saved_a
     record_envelope::resetToDefault(*ctx.stage_b_store);
     *has_saved_alignment = false;
     *saved_alignment = calibration::InstallationAlignment{};
-    publishCorrectionInputs(ctx, saved_profile, nullptr);
+    publishCorrectionInputs(ctx, saved_profile, nullptr, saved_deviation);
 
     diag_log::Line("CAL").kv("stage", "B").kv("result", "reset").emit();
     respond(cmd, true, "{\"schema\":1,\"reset\":true}");
@@ -487,11 +604,161 @@ void handleNetworkReset(Context &ctx, const char *trigger, shared_state::AppComm
     }
 }
 
-void handleOtherStart(shared_state::AppCommand &cmd)
+void handleStageCStart(Context &ctx, calibration::StageC &stage_c, bool manual, shared_state::AppCommand &cmd)
 {
-    // Stage C isn't implemented yet (its own later phase).
-    respond(cmd, false,
-            "{\"schema\":1,\"error\":{\"code\":\"NOT_IMPLEMENTED\",\"message\":\"not yet implemented\"}}");
+    CalibrationService::Stage busy_stage = CalibrationService::Stage::kNone;
+    if (!ctx.calibration_service->tryStart(CalibrationService::Stage::kC, busy_stage))
+    {
+        diag_log::Line("CAL").token("busy").kv("stage", stageName(busy_stage)).kv("rejected", "C").emit();
+        char body[160];
+        snprintf(body, sizeof(body),
+                 "{\"schema\":1,\"error\":{\"code\":\"CALIBRATION_BUSY\",\"message\":\"another calibration procedure "
+                 "is already running\"},\"active_stage\":\"%s\"}",
+                 stageName(busy_stage));
+        respond(cmd, false, body);
+        return;
+    }
+
+    float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
+    stage_c.start(now_s);
+    if (manual)
+    {
+        stage_c.startManualSwing();
+        diag_log::Line("CAL").kv("stage", "C").kv("state", "AwaitingManualPoint").kv("point", 1).emit();
+    }
+    else
+    {
+        stage_c.startGpsSwing();
+        diag_log::Line("CAL").kv("stage", "C").kv("state", "Swinging").emit();
+    }
+    respond(cmd, true, "{\"schema\":1,\"started\":true}");
+}
+
+void handleStageCCancel(Context &ctx, calibration::StageC &stage_c, shared_state::AppCommand &cmd)
+{
+    stage_c.cancel();
+    ctx.calibration_service->cancel(CalibrationService::Stage::kC);
+    diag_log::Line("CAL").kv("stage", "C").kv("result", "cancelled").emit();
+    web_api::broadcastCalibrationResult("C", "CANCELLED", nullptr);
+    respond(cmd, true, "{\"schema\":1,\"cancelled\":true}");
+}
+
+void handleStageCManualPoint(Context &ctx, calibration::StageC &stage_c, shared_state::AppCommand &cmd)
+{
+    if (stage_c.state() != calibration::StageCState::kAwaitingManualPoint)
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"NOT_ACTIVE\",\"message\":\"not awaiting a manual point\"}}");
+        return;
+    }
+
+    float variation_rad = resolveVariationOrZero(ctx);
+    float raw_heading_rad = shared_state::getHeadingReading().compass_heading_rad;
+    float true_reference_bearing_rad = cmd.float_param * kDegToRad;
+    stage_c.enterManualPoint(true_reference_bearing_rad, raw_heading_rad, variation_rad);
+
+    diag_log::Line("CAL").kv("stage", "C").kv("point_entered", true).emit();
+
+    if (stage_c.state() == calibration::StageCState::kRejected)
+    {
+        diag_log::Line("CAL")
+            .kv("stage", "C")
+            .kv("result", "rejected")
+            .kv("reason", stageCRejectReasonName(stage_c.rejectReason()))
+            .kv("rms_deg", static_cast<double>(stage_c.candidateResidualRmsRad() * kRadToDeg))
+            .emit();
+        ctx.calibration_service->endActive();
+        web_api::broadcastCalibrationResult("C", "REJECTED", stageCRejectReasonName(stage_c.rejectReason()));
+    }
+    respond(cmd, true, "{\"schema\":1,\"point_recorded\":true}");
+}
+
+void handleStageCApply(Context &ctx, calibration::StageC &stage_c, calibration::DeviationCorrection *saved_deviation,
+                        bool *has_saved_deviation, const calibration::SensorCalibrationProfile *saved_profile,
+                        const calibration::InstallationAlignment *saved_alignment, shared_state::AppCommand &cmd)
+{
+    if (stage_c.state() != calibration::StageCState::kResultReady)
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"NO_CANDIDATE\",\"message\":\"no computed result to apply\"}}");
+        return;
+    }
+
+    float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
+    stage_c.apply(now_s);
+
+    calibration::DeviationCorrection correction;
+    char iso8601[32];
+    if (!ctx.clock->wallClockIso8601(iso8601, sizeof(iso8601)))
+    {
+        snprintf(iso8601, sizeof(iso8601), "unavailable");
+    }
+    snprintf(correction.saved_at_iso8601, sizeof(correction.saved_at_iso8601), "%s", iso8601);
+    heading::DeviationCoefficients coeffs = stage_c.candidateCoefficients();
+    correction.coefficients[0] = coeffs.a;
+    correction.coefficients[1] = coeffs.b;
+    correction.coefficients[2] = coeffs.c;
+    correction.coefficients[3] = coeffs.d;
+    correction.coefficients[4] = coeffs.e;
+    correction.max_deviation_rad = stage_c.candidateMaxDeviationRad();
+    correction.residual_rms_rad = stage_c.candidateResidualRmsRad();
+    correction.source = static_cast<uint8_t>(stage_c.source());
+
+    bool saved = calibration::saveDeviationCorrection(*ctx.stage_c_store, correction);
+    if (saved)
+    {
+        *saved_deviation = correction;
+        *has_saved_deviation = true;
+        publishCorrectionInputs(ctx, saved_profile, saved_alignment, saved_deviation);
+        diag_log::Line("CAL")
+            .kv("stage", "C")
+            .kv("result", "saved")
+            .kv("max_deviation_deg", static_cast<double>(correction.max_deviation_rad * kRadToDeg))
+            .kv("rms_deg", static_cast<double>(correction.residual_rms_rad * kRadToDeg))
+            .emit();
+    }
+
+    ctx.calibration_service->endActive();
+    web_api::broadcastCalibrationResult("C", saved ? "SAVED" : "REJECTED", saved ? nullptr : "save failed");
+    respond(cmd, saved, saved ? "{\"schema\":1,\"applied\":true}"
+                              : "{\"schema\":1,\"error\":{\"code\":\"SAVE_FAILED\",\"message\":\"could not persist "
+                                "the deviation record\"}}");
+}
+
+void handleStageCDiscard(Context &ctx, calibration::StageC &stage_c, shared_state::AppCommand &cmd)
+{
+    if (stage_c.state() != calibration::StageCState::kResultReady)
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"NO_CANDIDATE\",\"message\":\"no computed result to discard\"}}");
+        return;
+    }
+    stage_c.discard();
+    ctx.calibration_service->endActive();
+    diag_log::Line("CAL").kv("stage", "C").kv("result", "discarded").emit();
+    web_api::broadcastCalibrationResult("C", "CANCELLED", "discarded by user");
+    respond(cmd, true, "{\"schema\":1,\"discarded\":true}");
+}
+
+void handleStageCReset(Context &ctx, calibration::DeviationCorrection *saved_deviation, bool *has_saved_deviation,
+                        const calibration::SensorCalibrationProfile *saved_profile,
+                        const calibration::InstallationAlignment *saved_alignment, shared_state::AppCommand &cmd)
+{
+    if (!cmd.confirm)
+    {
+        respond(cmd, false,
+                "{\"schema\":1,\"error\":{\"code\":\"CONFIRM_REQUIRED\",\"message\":\"reset requires "
+                "confirm:true\"}}");
+        return;
+    }
+
+    record_envelope::resetToDefault(*ctx.stage_c_store);
+    *has_saved_deviation = false;
+    *saved_deviation = calibration::DeviationCorrection{};
+    publishCorrectionInputs(ctx, saved_profile, saved_alignment, nullptr);
+
+    diag_log::Line("CAL").kv("stage", "C").kv("result", "reset").emit();
+    respond(cmd, true, "{\"schema\":1,\"reset\":true}");
 }
 
 struct StageState
@@ -502,6 +769,9 @@ struct StageState
     calibration::StageB *stage_b;
     calibration::InstallationAlignment *saved_alignment;
     bool *has_saved_alignment;
+    calibration::StageC *stage_c;
+    calibration::DeviationCorrection *saved_deviation;
+    bool *has_saved_deviation;
 };
 
 void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
@@ -509,13 +779,13 @@ void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
     switch (cmd.type)
     {
         case shared_state::AppCommandType::kCalStartA:
-            handleStageAStart(ctx, *s.stage_a, cmd);
+            handleStageAStart(ctx, *s.stage_a, *s.has_saved_deviation, cmd);
             break;
         case shared_state::AppCommandType::kCalCancelA:
             handleStageACancel(ctx, *s.stage_a, cmd);
             break;
         case shared_state::AppCommandType::kCalResetA:
-            handleStageAReset(ctx, s.saved_profile, s.has_saved_profile, s.saved_alignment, cmd);
+            handleStageAReset(ctx, s.saved_profile, s.has_saved_profile, s.saved_alignment, s.saved_deviation, cmd);
             break;
         case shared_state::AppCommandType::kCalStartB:
             handleStageBStart(ctx, *s.stage_b, cmd);
@@ -533,21 +803,36 @@ void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
             handleStageBBearing(ctx, *s.stage_b, cmd);
             break;
         case shared_state::AppCommandType::kCalApplyB:
-            handleStageBApply(ctx, *s.stage_b, s.saved_alignment, s.has_saved_alignment, cmd);
+            handleStageBApply(ctx, *s.stage_b, s.saved_alignment, s.has_saved_alignment, s.saved_profile,
+                               s.saved_deviation, cmd);
             break;
         case shared_state::AppCommandType::kCalDiscardB:
             handleStageBDiscard(ctx, *s.stage_b, cmd);
             break;
         case shared_state::AppCommandType::kCalResetB:
-            handleStageBReset(ctx, s.saved_alignment, s.has_saved_alignment, s.saved_profile, cmd);
+            handleStageBReset(ctx, s.saved_alignment, s.has_saved_alignment, s.saved_profile, s.saved_deviation, cmd);
             break;
         case shared_state::AppCommandType::kCalStartCGps:
+            handleStageCStart(ctx, *s.stage_c, false, cmd);
+            break;
         case shared_state::AppCommandType::kCalStartCManual:
-            handleOtherStart(cmd);
+            handleStageCStart(ctx, *s.stage_c, true, cmd);
             break;
         case shared_state::AppCommandType::kCalCancelC:
-            ctx.calibration_service->cancel(CalibrationService::Stage::kC);
-            respond(cmd, true, "{\"schema\":1,\"cancelled\":true}");
+            handleStageCCancel(ctx, *s.stage_c, cmd);
+            break;
+        case shared_state::AppCommandType::kCalCManualPoint:
+            handleStageCManualPoint(ctx, *s.stage_c, cmd);
+            break;
+        case shared_state::AppCommandType::kCalApplyC:
+            handleStageCApply(ctx, *s.stage_c, s.saved_deviation, s.has_saved_deviation, s.saved_profile,
+                               s.saved_alignment, cmd);
+            break;
+        case shared_state::AppCommandType::kCalDiscardC:
+            handleStageCDiscard(ctx, *s.stage_c, cmd);
+            break;
+        case shared_state::AppCommandType::kCalResetC:
+            handleStageCReset(ctx, s.saved_deviation, s.has_saved_deviation, s.saved_profile, s.saved_alignment, cmd);
             break;
         case shared_state::AppCommandType::kSettingsSave:
             handleSettingsSave(ctx, cmd);
@@ -556,9 +841,6 @@ void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
             handleNetworkReset(ctx, "http_api", &cmd);
             break;
         default:
-            // Stage C is wired up by its own later task (User Story 4) --
-            // not reachable yet since no HTTP route posts these command
-            // types until then.
             respond(cmd, false,
                     "{\"schema\":1,\"error\":{\"code\":\"NOT_IMPLEMENTED\",\"message\":\"not yet implemented\"}}");
             break;
@@ -570,7 +852,8 @@ void handleCommand(Context &ctx, StageState &s, shared_state::AppCommand &cmd)
 // ImuDriver::saveDcd() (T062 -- only ever on this transition, never on
 // Cancel/TimedOut); TimedOut/Cancelled just end the session.
 void driveStageA(Context &ctx, calibration::StageA &stage_a, calibration::SensorCalibrationProfile *saved_profile,
-                  bool *has_saved_profile, const calibration::InstallationAlignment *saved_alignment)
+                  bool *has_saved_profile, const calibration::InstallationAlignment *saved_alignment,
+                  const calibration::DeviationCorrection *saved_deviation)
 {
     if (ctx.calibration_service->activeStage() != CalibrationService::Stage::kA)
     {
@@ -641,14 +924,14 @@ void driveStageA(Context &ctx, calibration::StageA &stage_a, calibration::Sensor
                 .emit();
         }
         ctx.calibration_service->endActive();
-        publishCorrectionInputs(ctx, *has_saved_profile ? saved_profile : nullptr, saved_alignment);
+        publishCorrectionInputs(ctx, *has_saved_profile ? saved_profile : nullptr, saved_alignment, saved_deviation);
         web_api::broadcastCalibrationResult("A", saved ? "SAVED" : "REJECTED", saved ? nullptr : "save failed");
     }
     else if (state_after == calibration::StageAState::kTimedOut)
     {
         diag_log::Line("CAL").kv("stage", "A").kv("result", "timeout").emit();
         ctx.calibration_service->endActive();
-        publishCorrectionInputs(ctx, *has_saved_profile ? saved_profile : nullptr, saved_alignment);
+        publishCorrectionInputs(ctx, *has_saved_profile ? saved_profile : nullptr, saved_alignment, saved_deviation);
         web_api::broadcastCalibrationResult("A", "TIMED_OUT", "calibration timed out before reaching High accuracy");
     }
 }
@@ -710,16 +993,91 @@ void driveStageB(Context &ctx, calibration::StageB &stage_b)
     }
 }
 
+// Feeds live samples into an active Stage C GPS-swing attempt: raw IMU
+// samples (heading/turn-rate/accuracy) plus COG/SOG (real bus data, or the
+// bench-only debug injection) while Swinging. AwaitingManualPoint and
+// ResultReady wait for explicit commands (manual-point / apply / discard),
+// so nothing to drive there.
+void driveStageC(Context &ctx, calibration::StageC &stage_c)
+{
+    if (ctx.calibration_service->activeStage() != CalibrationService::Stage::kC)
+    {
+        return;
+    }
+    if (stage_c.state() != calibration::StageCState::kSwinging)
+    {
+        return;
+    }
+
+    shared_state::DebugGpsInject inject = shared_state::getDebugGpsInject();
+    float sog_m_s;
+    float cog_rad;
+    float variation_rad;
+    bool reference_fresh;
+    if (inject.active)
+    {
+        sog_m_s = inject.sog_m_s;
+        cog_rad = inject.cog_rad;
+        variation_rad = inject.variation_rad;
+        reference_fresh = true;
+    }
+    else
+    {
+        sog_m_s = ctx.n2k_service->lastSogMS();
+        cog_rad = ctx.n2k_service->lastCogRad();
+        variation_rad = resolveVariationOrZero(ctx);
+        reference_fresh = ctx.n2k_service->cogSogSourcePresent();
+    }
+    float reference_age_s = reference_fresh ? 0.0f : (thresholds::kStageCReferenceMaxAgeS + 1.0f);
+    float reference_magnetic_heading_rad = cog_rad - variation_rad;
+
+    heading::HeadingReading reading = shared_state::getHeadingReading();
+    shared_state::RawImuSample raw = shared_state::getRawImuSample();
+
+    calibration::StageCState state_before = stage_c.state();
+    float now_s = static_cast<float>(ctx.clock->monotonicMillis()) / 1000.0f;
+    stage_c.updateSwing(reading.compass_heading_rad, reference_magnetic_heading_rad, reading.rate_of_turn_rad_s,
+                         sog_m_s, reference_age_s, raw.mag_accuracy, raw.accel_accuracy, raw.gyro_accuracy, now_s);
+
+    diag_log::Line("CAL")
+        .kv("stage", "C")
+        .kv("sector_coverage", static_cast<double>(stage_c.sectorCoveragePct()))
+        .kv("turns", static_cast<double>(stage_c.turnsCompleted()))
+        .emit();
+
+    calibration::StageCState state_after = stage_c.state();
+    if (state_after == calibration::StageCState::kRejected && state_after != state_before)
+    {
+        diag_log::Line("CAL")
+            .kv("stage", "C")
+            .kv("result", "rejected")
+            .kv("reason", stageCRejectReasonName(stage_c.rejectReason()))
+            .kv("rms_deg", static_cast<double>(stage_c.candidateResidualRmsRad() * kRadToDeg))
+            .emit();
+        ctx.calibration_service->endActive();
+        web_api::broadcastCalibrationResult("C", "REJECTED", stageCRejectReasonName(stage_c.rejectReason()));
+    }
+}
+
 void taskFn(void *param)
 {
     auto *ctx = static_cast<Context *>(param);
     esp_task_wdt_add(nullptr);
 
-    web_api::start(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
-
-    ctx->settings_service->init();
+    // WiFi/AP MUST come up before web_api::start(): AsyncWebServer::begin()
+    // binds a listen socket through lwIP's TCP/IP task, which the ESP32
+    // Arduino core only spins up once WiFi.mode()/softAP() first runs.
+    // Calling web_api::start() first crashes immediately (NULL semaphore in
+    // lwIP's tcpip_api_call -> xQueueSemaphoreTake) since that task doesn't
+    // exist yet -- this is what was silently preventing the AP from ever
+    // appearing.
+    record_envelope::Status settings_load_status = record_envelope::Status::kAbsent;
+    ctx->settings_service->init(&settings_load_status);
+    logIfRecordCorrupted("network_settings", settings_load_status);
     shared_state::publishCurrentSsid(ctx->settings_service->current().ssid);
     web_api::configureAccessPoint(ctx->settings_service->current().ssid);
+
+    web_api::start(*ctx->calibration_service, *ctx->n2k_service, *ctx->clock);
 
     pinMode(pins::kBootButton, INPUT_PULLUP);  // read-only, per constitution Principle V -- never driven
     bool boot_button_pressed = false;
@@ -728,18 +1086,34 @@ void taskFn(void *param)
 
     calibration::StageA stage_a;
     calibration::SensorCalibrationProfile saved_profile{};
-    bool has_saved_profile = calibration::loadSensorCalibrationProfile(*ctx->stage_a_store, saved_profile);
+    record_envelope::Status stage_a_load_status = record_envelope::Status::kAbsent;
+    bool has_saved_profile =
+        calibration::loadSensorCalibrationProfile(*ctx->stage_a_store, saved_profile, &stage_a_load_status);
+    logIfRecordCorrupted("stage_a", stage_a_load_status);
 
     calibration::StageB stage_b;
     calibration::InstallationAlignment saved_alignment{};
-    bool has_saved_alignment = calibration::loadInstallationAlignment(*ctx->stage_b_store, saved_alignment);
+    record_envelope::Status stage_b_load_status = record_envelope::Status::kAbsent;
+    bool has_saved_alignment =
+        calibration::loadInstallationAlignment(*ctx->stage_b_store, saved_alignment, &stage_b_load_status);
+    logIfRecordCorrupted("stage_b", stage_b_load_status);
+
+    calibration::StageC stage_c;
+    calibration::DeviationCorrection saved_deviation{};
+    record_envelope::Status stage_c_load_status = record_envelope::Status::kAbsent;
+    bool has_saved_deviation =
+        calibration::loadDeviationCorrection(*ctx->stage_c_store, saved_deviation, &stage_c_load_status);
+    logIfRecordCorrupted("stage_c", stage_c_load_status);
 
     publishCorrectionInputs(*ctx, has_saved_profile ? &saved_profile : nullptr,
-                             has_saved_alignment ? &saved_alignment : nullptr);
+                             has_saved_alignment ? &saved_alignment : nullptr,
+                             has_saved_deviation ? &saved_deviation : nullptr);
     publishStageAStatus(*ctx->calibration_service, stage_a, saved_profile, has_saved_profile);
     publishStageBStatus(*ctx->calibration_service, stage_b, saved_alignment, has_saved_alignment);
+    publishStageCStatus(*ctx->calibration_service, stage_c, saved_deviation, has_saved_deviation);
 
-    StageState s{&stage_a, &saved_profile, &has_saved_profile, &stage_b, &saved_alignment, &has_saved_alignment};
+    StageState s{&stage_a,       &saved_profile,      &has_saved_profile,   &stage_b,        &saved_alignment,
+                 &has_saved_alignment, &stage_c, &saved_deviation, &has_saved_deviation};
 
     for (;;)
     {
@@ -752,13 +1126,16 @@ void taskFn(void *param)
             handleCommand(*ctx, s, cmd);
             publishStageAStatus(*ctx->calibration_service, stage_a, saved_profile, has_saved_profile);
             publishStageBStatus(*ctx->calibration_service, stage_b, saved_alignment, has_saved_alignment);
+            publishStageCStatus(*ctx->calibration_service, stage_c, saved_deviation, has_saved_deviation);
         }
 
         driveStageA(*ctx, stage_a, &saved_profile, &has_saved_profile,
-                    has_saved_alignment ? &saved_alignment : nullptr);
+                    has_saved_alignment ? &saved_alignment : nullptr, has_saved_deviation ? &saved_deviation : nullptr);
         driveStageB(*ctx, stage_b);
+        driveStageC(*ctx, stage_c);
         publishStageAStatus(*ctx->calibration_service, stage_a, saved_profile, has_saved_profile);
         publishStageBStatus(*ctx->calibration_service, stage_b, saved_alignment, has_saved_alignment);
+        publishStageCStatus(*ctx->calibration_service, stage_c, saved_deviation, has_saved_deviation);
 
         CalibrationService::Stage timed_out = ctx->calibration_service->checkInactivityTimeout();
         if (timed_out != CalibrationService::Stage::kNone)
@@ -773,6 +1150,11 @@ void taskFn(void *param)
             {
                 stage_b.cancel();
                 publishStageBStatus(*ctx->calibration_service, stage_b, saved_alignment, has_saved_alignment);
+            }
+            else if (timed_out == CalibrationService::Stage::kC)
+            {
+                stage_c.cancel();
+                publishStageCStatus(*ctx->calibration_service, stage_c, saved_deviation, has_saved_deviation);
             }
         }
 
@@ -820,11 +1202,11 @@ void taskFn(void *param)
 }  // namespace
 
 void start(CalibrationService &calibration_service, N2kService &n2k_service, ImuDriver &imu_driver,
-           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, SettingsService &settings_service,
-           Clock &clock)
+           KeyValueStore &stage_a_store, KeyValueStore &stage_b_store, KeyValueStore &stage_c_store,
+           SettingsService &settings_service, Clock &clock)
 {
-    static Context ctx{&calibration_service, &n2k_service,   &imu_driver, &stage_a_store,
-                        &stage_b_store,       &settings_service, &clock};
+    static Context ctx{&calibration_service, &n2k_service, &imu_driver,        &stage_a_store,
+                        &stage_b_store,       &stage_c_store, &settings_service, &clock};
     xTaskCreatePinnedToCore(taskFn, "AppTask", kStackSize, &ctx, kPriority, nullptr, kCoreId);
 }
 

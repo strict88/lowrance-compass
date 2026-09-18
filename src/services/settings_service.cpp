@@ -2,10 +2,10 @@
 
 #include <cstring>
 
-void SettingsService::init()
+void SettingsService::init(record_envelope::Status *status_out)
 {
     settings::NetworkSettings loaded;
-    if (settings::loadNetworkSettings(store_, loaded))
+    if (settings::loadNetworkSettings(store_, loaded, status_out))
     {
         current_ = loaded;
     }

@@ -20,11 +20,25 @@ bool saveSensorCalibrationProfile(KeyValueStore &store, const SensorCalibrationP
                                   reinterpret_cast<const uint8_t *>(&profile), sizeof(profile));
 }
 
-bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out)
+bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out,
+                                   record_envelope::Status *status_out)
 {
     SensorCalibrationProfile loaded;
     auto result = record_envelope::load(store, kSensorCalibrationProfileSchemaVersion,
                                          reinterpret_cast<uint8_t *>(&loaded), sizeof(loaded));
+    if (status_out != nullptr)
+    {
+        *status_out = result.status;
+    }
+    if (result.status == record_envelope::Status::kCrcMismatch ||
+        result.status == record_envelope::Status::kSchemaMismatch)
+    {
+        // FR-045: a record that fails validation is reset to default on load,
+        // leaving every other record untouched. Logging the event (FR-046)
+        // is the hardware-only caller's job via `status_out` -- this stays
+        // native-testable with no Serial dependency.
+        record_envelope::resetToDefault(store);
+    }
     if (result.status != record_envelope::Status::kOk)
     {
         return false;

@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "drivers/kv_store/kv_store.h"
+#include "drivers/kv_store/record_envelope.h"
 #include "heading/pipeline.h"
 #include "heading/quaternion.h"
 #include "thresholds.h"
@@ -59,7 +60,9 @@ struct InstallationAlignment
 constexpr uint8_t kInstallationAlignmentSchemaVersion = 1;
 
 bool saveInstallationAlignment(KeyValueStore &store, const InstallationAlignment &alignment);
-bool loadInstallationAlignment(KeyValueStore &store, InstallationAlignment &out);
+// See stage_a.h's loadSensorCalibrationProfile for `status_out`'s purpose.
+bool loadInstallationAlignment(KeyValueStore &store, InstallationAlignment &out,
+                                record_envelope::Status *status_out = nullptr);
 
 // Converts a loaded (or absent) InstallationAlignment into the heading
 // pipeline's correction inputs. `exists=false` (Stage B NOT_DONE) yields

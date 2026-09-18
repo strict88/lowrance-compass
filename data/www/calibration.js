@@ -43,6 +43,30 @@
   var stageBCancelBtn = document.getElementById("stage-b-cancel-btn");
   var stageBRecalBtn = document.getElementById("stage-b-recalibrate-btn");
 
+  var stageCWhatWhyEl = document.getElementById("stage-c-what-why");
+  var stageCBeforeListEl = document.getElementById("stage-c-before-list");
+  var stageCDurationEl = document.getElementById("stage-c-duration");
+  var stageCGuideEl = document.getElementById("stage-c-guide");
+  var stageCStartGpsBtn = document.getElementById("stage-c-start-gps-btn");
+  var stageCStartManualBtn = document.getElementById("stage-c-start-manual-btn");
+  var stageCSwingProgressEl = document.getElementById("stage-c-swing-progress");
+  var stageCCoverageFillEl = document.getElementById("stage-c-coverage-fill");
+  var stageCTurnsValueEl = document.getElementById("stage-c-turns-value");
+  var stageCTooFastEl = document.getElementById("stage-c-too-fast");
+  var stageCManualEntryEl = document.getElementById("stage-c-manual-entry");
+  var stageCManualPointIndexEl = document.getElementById("stage-c-manual-point-index");
+  var stageCManualBearingInput = document.getElementById("stage-c-manual-bearing-input");
+  var stageCManualSubmitBtn = document.getElementById("stage-c-manual-submit-btn");
+  var stageCResultReadyEl = document.getElementById("stage-c-result-ready");
+  var stageCMaxDeviationValueEl = document.getElementById("stage-c-max-deviation-value");
+  var stageCResidualValueEl = document.getElementById("stage-c-residual-value");
+  var stageCCoefficientsRowEl = document.getElementById("stage-c-coefficients-row");
+  var stageCAcceptBtn = document.getElementById("stage-c-accept-btn");
+  var stageCDiscardBtn = document.getElementById("stage-c-discard-btn");
+  var stageCResultEl = document.getElementById("stage-c-result");
+  var stageCCancelBtn = document.getElementById("stage-c-cancel-btn");
+  var stageCRecalBtn = document.getElementById("stage-c-recalibrate-btn");
+
   var kPositionLabels = {
     POS_X: "+X",
     NEG_X: "-X",
@@ -120,6 +144,7 @@
     durationEl.textContent = a.duration_estimate ? "Estimated time: " + a.duration_estimate : "";
 
     renderStageBGuide(guide.stages && guide.stages.b);
+    renderStageCGuide(guide.stages && guide.stages.c);
   }
 
   function renderStageBGuide(b) {
@@ -132,6 +157,18 @@
       stageBBeforeListEl.appendChild(li);
     });
     stageBDurationEl.textContent = b.duration_estimate ? "Estimated time: " + b.duration_estimate : "";
+  }
+
+  function renderStageCGuide(c) {
+    if (!c) return;
+    stageCWhatWhyEl.textContent = c.what_and_why || "";
+    stageCBeforeListEl.innerHTML = "";
+    (c.before_you_start || []).forEach(function (item) {
+      var li = document.createElement("li");
+      li.textContent = item;
+      stageCBeforeListEl.appendChild(li);
+    });
+    stageCDurationEl.textContent = c.duration_estimate ? "Estimated time: " + c.duration_estimate : "";
   }
 
   function setStatusPill(text, variant) {
@@ -167,7 +204,7 @@
     }
 
     renderStageB(status);
-    updatePlaceholderPill(stageCPillEl, stages.c);
+    renderStageC(status);
   }
 
   function renderStageB(status) {
@@ -218,21 +255,63 @@
     }
   }
 
+  function renderStageC(status) {
+    var stages = status.stages || {};
+    var stageC = stages.c;
+    var session = status.session || {};
+    var activeC = session.active_stage === "C";
+    var progress = session.progress || {};
+
+    stageCGuideEl.hidden = activeC || (stageC && stageC.state === "DONE");
+    stageCRecalBtn.hidden = activeC || !(stageC && stageC.state === "DONE");
+    stageCCancelBtn.hidden = !activeC;
+
+    stageCSwingProgressEl.hidden = true;
+    stageCManualEntryEl.hidden = true;
+    stageCResultReadyEl.hidden = true;
+
+    if (activeC) {
+      setPill(stageCPillEl, "In progress", "in-progress");
+
+      var awaitingPoint = progress.manual_point_index !== null && progress.manual_point_index !== undefined;
+      var hasCandidate = progress.candidate_max_deviation_deg !== null && progress.candidate_max_deviation_deg !== undefined;
+
+      if (hasCandidate) {
+        stageCResultReadyEl.hidden = false;
+        stageCMaxDeviationValueEl.textContent = Number(progress.candidate_max_deviation_deg).toFixed(1);
+        stageCResidualValueEl.textContent = Number(progress.candidate_residual_rms_deg).toFixed(1);
+        var coeffs = progress.candidate_coefficients || [0, 0, 0, 0, 0];
+        stageCCoefficientsRowEl.innerHTML = "";
+        coeffs.forEach(function (v) {
+          var td = document.createElement("td");
+          td.textContent = Number(v).toFixed(3);
+          stageCCoefficientsRowEl.appendChild(td);
+        });
+      } else if (awaitingPoint) {
+        stageCManualEntryEl.hidden = false;
+        stageCManualPointIndexEl.textContent = String(progress.manual_point_index);
+      } else {
+        stageCSwingProgressEl.hidden = false;
+        stageCCoverageFillEl.style.width = (progress.sector_coverage_pct || 0) + "%";
+        stageCTurnsValueEl.textContent = Number(progress.turns_completed || 0).toFixed(1);
+        stageCTooFastEl.hidden = !progress.turning_too_fast;
+      }
+    } else if (stageC && stageC.state === "DONE") {
+      var savedAt = stageC.saved_at ? new Date(stageC.saved_at).toLocaleDateString() : "date unavailable";
+      setPill(stageCPillEl, "Done · " + savedAt, "done");
+    } else {
+      setPill(stageCPillEl, "Not done", "not-done");
+    }
+  }
+
   function setPill(pillEl, text, variant) {
     pillEl.textContent = text;
     pillEl.className = "status-pill status-pill--" + variant;
   }
 
-  function updatePlaceholderPill(pillEl, stageStatus) {
-    if (!pillEl) return;
-    var done = stageStatus && stageStatus.state === "DONE";
-    pillEl.textContent = done ? "Done" : "Not done";
-    pillEl.className = "status-pill status-pill--" + (done ? "done" : "not-done");
-  }
-
   function showResult(msg) {
-    if (msg.stage !== "A" && msg.stage !== "B") return;
-    var label = msg.stage === "A" ? "Stage A calibration" : "Installation alignment";
+    if (msg.stage !== "A" && msg.stage !== "B" && msg.stage !== "C") return;
+    var label = msg.stage === "A" ? "Stage A calibration" : msg.stage === "B" ? "Installation alignment" : "Compass swing";
     var text;
     switch (msg.outcome) {
       case "SAVED":
@@ -251,7 +330,7 @@
         text = "";
     }
 
-    var el = msg.stage === "A" ? resultEl : stageBResultEl;
+    var el = msg.stage === "A" ? resultEl : msg.stage === "B" ? stageBResultEl : stageCResultEl;
     el.textContent = text;
     el.className = "cal-result cal-result--" + msg.outcome.toLowerCase();
     el.hidden = false;
@@ -311,6 +390,31 @@
   });
   stageBDiscardBtn.addEventListener("click", function () {
     postJson("/api/calibration/b/discard").catch(function () {});
+  });
+
+  stageCStartGpsBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/start", { mode: "gps" }).catch(function () {});
+  });
+  stageCStartManualBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/start", { mode: "manual" }).catch(function () {});
+  });
+  stageCRecalBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/start", { mode: "gps" }).catch(function () {});
+  });
+  stageCCancelBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/cancel").catch(function () {});
+  });
+  stageCManualSubmitBtn.addEventListener("click", function () {
+    var bearingDeg = parseFloat(stageCManualBearingInput.value);
+    if (isNaN(bearingDeg)) return;
+    postJson("/api/calibration/c/manual-point", { reference_heading_deg: bearingDeg }).catch(function () {});
+    stageCManualBearingInput.value = "";
+  });
+  stageCAcceptBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/apply").catch(function () {});
+  });
+  stageCDiscardBtn.addEventListener("click", function () {
+    postJson("/api/calibration/c/discard").catch(function () {});
   });
 
   window.CompassBus.on("status", render);

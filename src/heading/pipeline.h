@@ -38,6 +38,14 @@ struct HeadingReading
     float rate_of_turn_rad_s = 0.0f;
     bool valid = false;
     InvalidReason reason_if_invalid = InvalidReason::kSensorNotCalibrated;
+
+    // Heading after level reference + mounting offset but BEFORE deviation
+    // correction (the "compass heading" a DeviationCorrection curve is
+    // fitted against/evaluated at -- see pipeline.cpp step 3). Stage C's
+    // swing/manual-point flow needs this exact value as its raw input so it
+    // measures deviation relative to the correction it's replacing, not a
+    // heading that's already been deviation-corrected.
+    float compass_heading_rad = 0.0f;  // [0, 2*pi)
 };
 
 struct PipelineInput

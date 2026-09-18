@@ -27,9 +27,9 @@ HeadingReading computeHeadingReading(const PipelineInput &input)
 
     // 3. Deviation correction (Stage C), evaluated at the pre-correction
     //    (compass) heading it was fitted against.
+    float compass_heading = normalizeAngle0To2Pi(heading);
     if (input.deviation_correction.has_correction)
     {
-        float compass_heading = normalizeAngle0To2Pi(heading);
         heading += evaluateDeviationRad(input.deviation_correction.coefficients, compass_heading);
     }
 
@@ -46,6 +46,7 @@ HeadingReading computeHeadingReading(const PipelineInput &input)
     result.rate_of_turn_rad_s = input.raw_gyro_z_rad_s;
     result.valid = gate.valid;
     result.reason_if_invalid = gate.reason;
+    result.compass_heading_rad = compass_heading;
     return result;
 }
 

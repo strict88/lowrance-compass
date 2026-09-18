@@ -3,12 +3,41 @@
 #include <Wire.h>
 
 #include "pin_config.h"
+#include "services/diag_log.h"
 
 namespace
 {
 constexpr uint32_t kRotationVectorIntervalUs = 10000;   // 100 Hz
 constexpr uint32_t kCalibratedSensorIntervalUs = 20000;  // 50 Hz
 constexpr uint32_t kDisconnectTimeoutMs = 500;  // no report for this long -> SENSOR_DISCONNECTED
+
+// The BNO08x's SA0/ADR pin selects between these two addresses; which one a
+// given breakout uses depends on how that pin is strapped on the board, not
+// on the chip itself, so both are tried rather than assuming BNO08x's own
+// library default (0x4A) is always right.
+constexpr uint8_t kBno08xAltI2cAddr = 0x4B;
+
+// Diagnostic only: lists every address that ACKs on the I2C bus, so a "not
+// found at 0x4A/0x4B" failure can be told apart from "nothing on the bus at
+// all" (power/SDA/SCL wiring) vs. "something's there but at an unexpected
+// address" (e.g. PS0/PS1 protocol-select pins not strapped for I2C mode).
+void scanI2CBus()
+{
+    int found = 0;
+    for (uint8_t addr = 1; addr < 127; addr++)
+    {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0)
+        {
+            diag_log::Line("IMU").token("i2c_scan_found").kv("addr", static_cast<long>(addr)).emit();
+            found++;
+        }
+    }
+    if (found == 0)
+    {
+        diag_log::Line("IMU").token("i2c_scan_empty").emit();
+    }
+}
 }  // namespace
 
 bool ImuDriverBno08x::init()
@@ -19,11 +48,24 @@ bool ImuDriverBno08x::init()
     digitalWrite(pins::kImuRst, HIGH);
 
     last_report_ms_ = millis();
+    initialized_ = false;
 
-    if (!bno_.begin_I2C(BNO08x_I2CADDR_DEFAULT, &Wire, pins::kImuRst))
+    if (!bno_.begin_I2C(BNO08x_I2CADDR_DEFAULT, &Wire, pins::kImuRst) &&
+        !bno_.begin_I2C(kBno08xAltI2cAddr, &Wire, pins::kImuRst))
     {
+        scanI2CBus();
         return false;
     }
+    initialized_ = true;
+
+    // Dynamic calibration must be running continuously for the chip to
+    // maintain/report High accuracy at all -- not just while Stage A is
+    // actively guiding the user through it. Without this, a fresh boot with
+    // a perfectly good saved DCD would still show gyro accuracy stuck low
+    // indefinitely, since nothing was tracking/refining confidence for it
+    // (SC-006: a saved calibration must restore usable accuracy within 10s
+    // of boot, not require redoing Stage A every power cycle).
+    setCalibrationConfig(/*enable_mag=*/true, /*enable_accel=*/true, /*enable_gyro=*/true);
 
     return enableReports();
 }
@@ -48,6 +90,11 @@ bool ImuDriverBno08x::enableReports()
 
 bool ImuDriverBno08x::readReport(ImuReport &out)
 {
+    if (!initialized_)
+    {
+        return false;
+    }
+
     if (bno_.wasReset())
     {
         enableReports();

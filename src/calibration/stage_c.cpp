@@ -25,11 +25,20 @@ bool saveDeviationCorrection(KeyValueStore &store, const DeviationCorrection &co
                                   reinterpret_cast<const uint8_t *>(&correction), sizeof(correction));
 }
 
-bool loadDeviationCorrection(KeyValueStore &store, DeviationCorrection &out)
+bool loadDeviationCorrection(KeyValueStore &store, DeviationCorrection &out, record_envelope::Status *status_out)
 {
     DeviationCorrection loaded;
     auto result = record_envelope::load(store, kDeviationCorrectionSchemaVersion,
                                          reinterpret_cast<uint8_t *>(&loaded), sizeof(loaded));
+    if (status_out != nullptr)
+    {
+        *status_out = result.status;
+    }
+    if (result.status == record_envelope::Status::kCrcMismatch ||
+        result.status == record_envelope::Status::kSchemaMismatch)
+    {
+        record_envelope::resetToDefault(store);  // FR-045; see stage_a.cpp's loadSensorCalibrationProfile.
+    }
     if (result.status != record_envelope::Status::kOk)
     {
         return false;
@@ -318,6 +327,12 @@ void StageC::evaluate()
     float rms_deg = fit.residual_rms_rad * kRadToDeg;
     float max_deg = fit.max_abs_deviation_rad * kRadToDeg;
 
+    // Recorded regardless of accept/reject so a rejection can be logged and
+    // shown with its actual numbers ("rms_deg=.." per contracts/serial-log.md),
+    // not stale/zeroed values from a previous attempt.
+    candidate_residual_rms_rad_ = fit.residual_rms_rad;
+    candidate_max_deviation_rad_ = fit.max_abs_deviation_rad;
+
     if (rms_deg > thresholds::kStageCMaxRmsResidualDeg)
     {
         reject_reason_ = StageCRejectReason::kResidualTooHigh;
@@ -332,8 +347,6 @@ void StageC::evaluate()
     }
 
     candidate_coefficients_ = fit.coefficients;
-    candidate_residual_rms_rad_ = fit.residual_rms_rad;
-    candidate_max_deviation_rad_ = fit.max_abs_deviation_rad;
     reject_reason_ = StageCRejectReason::kNone;
     state_ = StageCState::kResultReady;
 }

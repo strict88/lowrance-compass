@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "drivers/kv_store/kv_store.h"
+#include "drivers/kv_store/record_envelope.h"
 #include "heading/quaternion.h"
 #include "thresholds.h"
 
@@ -95,7 +96,12 @@ bool saveSensorCalibrationProfile(KeyValueStore &store, const SensorCalibrationP
 // on Status::kOk; a schema/CRC mismatch or absent record both mean "treat as
 // not done" per data-model.md §5 and return false, leaving `profile_out`
 // untouched.
-bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out);
+// `status_out`, when non-null, receives the underlying record_envelope::Status
+// (kOk/kAbsent/kCrcMismatch/kSchemaMismatch) so a hardware-only caller can
+// distinguish "never saved" from "corrupted" and reset+log the latter
+// (FR-045/046) -- this function itself never mutates storage.
+bool loadSensorCalibrationProfile(KeyValueStore &store, SensorCalibrationProfile &profile_out,
+                                   record_envelope::Status *status_out = nullptr);
 
 class StageA
 {

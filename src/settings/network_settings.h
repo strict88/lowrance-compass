@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "drivers/kv_store/kv_store.h"
+#include "drivers/kv_store/record_envelope.h"
 
 // SSID validation (FR-035) and the NetworkSettings record (data-model.md
 // §1.4). Pure logic, native-testable.
@@ -23,6 +24,7 @@ struct NetworkSettings
 constexpr uint8_t kNetworkSettingsSchemaVersion = 1;
 
 bool saveNetworkSettings(KeyValueStore &store, const NetworkSettings &settings);
-bool loadNetworkSettings(KeyValueStore &store, NetworkSettings &out);
+// See calibration/stage_a.h's loadSensorCalibrationProfile for `status_out`'s purpose.
+bool loadNetworkSettings(KeyValueStore &store, NetworkSettings &out, record_envelope::Status *status_out = nullptr);
 
 }  // namespace settings
